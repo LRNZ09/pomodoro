@@ -1,6 +1,6 @@
-# Pomodoro plugin for Claude Code and the Claude desktop app
+# Pomodoro plugin for Claude Code
 
-A break timer for long sessions in Claude Code and the Claude desktop app, with a check-in where Claude sums up and asks whether to go on.
+One rhythm for you and Claude on long sessions: every 25 minutes of work, you get told to take a break, and Claude pauses to tell you what it did, whether it has drifted from the goal, and what it would do next, then asks whether to go on.
 
 ## Install
 
@@ -18,13 +18,19 @@ From a shell:
 claude plugin install pomodoro --marketplace LRNZ09/pomodoro
 ```
 
-In the desktop app, where `/plugin` doesn't run: click + next to the prompt box, then Plugins, Add marketplace with `LRNZ09/pomodoro`, then Add plugin.
+It needs Claude Code 2.1.304 or later, and runs in terminal sessions only: not in the desktop app, VS Code or `claude -p`. It's built on Claude Code's plugin API for TypeScript hooks, which is in early access, so a Claude Code update can break it.
+
+To keep the timer without the check-in, set `checkIn` to `false` under `/config`. To remove the plugin, and the timer data it keeps:
+
+```
+claude plugin uninstall pomodoro@pomodoro
+```
 
 ## Features
 
-- **Count.** Shows how long you've worked since your last break, at the right of the prompt footer beside its other labels: `🍅 12/25m`, in the terminal and the desktop app. Once a break is due, a status line under the prompt says so too; Claude Code draws a plugin's status line in yellow with a ⚠, as `⚠ pomodoro: 🍅 27m, time for a break`. A phone following the session shows that line only.
+- **Check-in.** Once the block is up, Claude gets a note with its next tool result. The note tells it to finish only what would otherwise be left half-done, then give you, in three lines at most: what it did since the break, whether it's still on the original goal or has drifted into a side problem, and what it would do next. Then Claude asks whether to go on. A line in the transcript tells you why Claude stopped. The check-in is sent once for every 25 minutes without a break, and only while Claude is working: it never waits in an idle session for your next prompt. It reaches the main conversation only, so during a long-running subagent it comes once the subagent returns.
+- **Count.** Shows how long you've worked since your last break, at the right of the prompt footer beside its other labels: `🍅 12/25m`. Once a break is due, a status line under the prompt says so too; Claude Code draws a plugin's status line in yellow with a ⚠, as `⚠ pomodoro: 🍅 27m, time for a break`. A phone following the session shows that line only.
 - **Alert.** After a 25-minute block it plays a chime and shows a toast and a desktop notification. The alert repeats every 5 minutes until you take a break, but not once you've been away from the keyboard for 2 minutes (the break may already be under way).
-- **Check-in.** Once the block is up, Claude gets a note with its next tool result. The note tells it to stop and give you, in three lines at most: what it did since the break, whether it's still on the original goal or has drifted into a side problem, and what it would do next. Then Claude asks whether to go on. A line in the transcript tells you why Claude stopped. The check-in is sent once for every 25 minutes without a break, and only while Claude is working: it never waits in an idle session for your next prompt. It reaches the main conversation only, so during a long-running subagent it comes once the subagent returns.
 
 It runs on a clock, a tick every minute, so the alert comes on time even while you're reading code and not typing to Claude.
 
@@ -54,14 +60,10 @@ Under `/config`, or `pluginConfigs` in `settings.json`:
 
 ## Alerts
 
-- **Banner.** It goes through your Claude Code notification channel (`preferredNotifChannel`), so your terminal shows it. While the Claude tab is in front, Ghostty shows it for a few seconds only, then removes it, so it's easy to miss. Where the terminal can't raise one, it falls back to `osascript` on macOS: Apple Terminal has no notification channel, and the desktop app has no terminal. macOS credits that banner to Script Editor. If you turned Claude Code notifications off, there's no banner.
+- **Banner.** It goes through your Claude Code notification channel (`preferredNotifChannel`), so your terminal shows it. While the Claude tab is in front, Ghostty shows it for a few seconds only, then removes it, so it's easy to miss. Where the terminal can't raise one, it falls back to `osascript` on macOS: Apple Terminal has no notification channel. macOS credits that banner to Script Editor. If you turned Claude Code notifications off, there's no banner.
 - **Chime.** Plain audio, not a notification, so you hear it even when the banner is easy to miss, and through a Focus (Work, Do Not Disturb).
 
 A Focus silences the banner unless it allows your terminal: System Settings → Focus → (your Focus) → Allowed Notifications → Apps.
-
-## Requirements
-
-Claude Code 2.1.304 or later. The plugin is a mod (a TypeScript hooks module), which older versions don't load. It runs in terminal sessions and in the desktop app, not in VS Code or `claude -p`.
 
 ## Development
 
@@ -81,8 +83,13 @@ Formatting and linting use [Biome](https://biomejs.dev) with the [`@lrnz09/biome
 bun install
 bun run check
 bun run fix
+bun run typecheck
 ```
+
+`bun run eval` runs the check-in eval (`evals/check-in`) on Haiku, Sonnet and Opus with your login, which costs tokens, and prints the pass-rate table.
 
 ## License
 
 [MIT](LICENSE)
+
+Pomodoro Technique® is a registered trademark of Francesco Cirillo; this plugin isn't affiliated with it.

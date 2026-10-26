@@ -1,6 +1,6 @@
 {
 	"name": "pomodoro",
-	"description": "A break timer for Claude Code and the Claude desktop app that notices your breaks and has Claude stop and check in on long stretches of work.",
+	"description": "One rhythm for you and Claude Code: a break when your 25 minutes are up, and a check-in where Claude sums up and asks whether to go on.",
 	"owner": { "name": "Lorenzo Pieri" },
 	"plugins": [{ "name": "pomodoro", "source": "./" }]
 }
