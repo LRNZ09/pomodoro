@@ -202,7 +202,8 @@ async function tick($: EngineInterface, options: PluginOptions) {
 	}
 }
 
-// The clock runs where the count shows: an interactive terminal session. Never in -p, VS Code or the desktop app.
+// The clock runs where the count shows: at the terminal, or once the desktop app attaches. Never in -p, nor in VS Code,
+// which attaches too but draws no footer labels.
 async function begin($: EngineInterface, options: PluginOptions) {
 	if (isStarted) return
 	isStarted = true
@@ -221,11 +222,18 @@ async function begin($: EngineInterface, options: PluginOptions) {
 
 export const register: Register = (on, options) => {
 	on('session.start', async ($, e, next) => {
-		if (e.isInteractive) await begin($, options)
+		// A reload while the desktop app is attached raises no new session.attach.
+		if (e.isInteractive || (await $.session.surfaces()).includes('desktop'))
+			await begin($, options)
 		return next(e)
 	})
 
-	// Reading the label while drawing redraws the footer on each new count.
+	on('session.attach', { surface: 'desktop' }, async ($, e, next) => {
+		await begin($, options)
+		return next(e)
+	})
+
+	// Reading the label while drawing redraws the footer on each new count (terminal, desktop).
 	on('ui.render', { component: 'SessionMode' }, async ($, e, next) => {
 		const { value } = await $.state.get(LABEL)
 		return next(
