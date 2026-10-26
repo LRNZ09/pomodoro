@@ -73,7 +73,7 @@ claude plugin test .
 claude --plugin-dir .
 ```
 
-The last one starts a session with the mod loaded from the folder; saving a file reloads it.
+The last one starts a session with the mod loaded from the folder; saving a file reloads it. Each load also writes the `claude-code` module's types for your Claude Code version into `.claude-plugin/types/` (ignored by git), which `tsconfig.json` points your editor and `tsc -p .` at, so run it once after cloning.
 
 Formatting and linting use [Biome](https://biomejs.dev) with the [`@lrnz09/biome-config`](https://www.npmjs.com/package/@lrnz09/biome-config) preset:
 
