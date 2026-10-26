@@ -1,0 +1,41 @@
+name: check
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "23 5 * * *" # daily: a Claude Code release can break the plugin with no change here
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# The plugin against the oldest Claude Code it supports and the newest. No login needed.
+jobs:
+  plugin:
+    strategy:
+      fail-fast: false
+      matrix:
+        claude: ["2.1.304", latest]
+    runs-on: ubuntu-latest
+    env:
+      DISABLE_AUTOUPDATER: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - uses: oven-sh/setup-bun@v2
+      - run: npm install -g @anthropic-ai/claude-code@${{ matrix.claude }}
+      - run: bun install --frozen-lockfile
+      - run: bun run check
+      - name: Write the plugin API types
+        # Loading the plugin from this folder writes them, even logged out; the run then stops at sign-in.
+        run: CLAUDE_CODE_PLUGIN_DIR_WATCH=1 claude -p --plugin-dir . /cost || true
+      - name: Check this Claude Code wrote them
+        run: |
+          head -1 .claude-plugin/types/claude-code/index.d.ts
+          grep -qF "Written by Claude Code $(claude --version | cut -d' ' -f1)." .claude-plugin/types/claude-code/index.d.ts
+      - run: claude plugin validate .
+      - run: claude plugin test .
+      - run: bun run typecheck
