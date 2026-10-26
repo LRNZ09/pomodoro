@@ -106,7 +106,7 @@ test('alerts at the block end, then every break length while there is no break',
 	expect(chimes.length).toBe(2)
 })
 
-test('the count is a mode label in the prompt footer, on the terminal and the desktop', async ($, on) => {
+test('the count is a mode label in the prompt footer', async ($, on) => {
 	const { clock } = world(on, () => 0)
 	// Stands for the engine drawing the footer's labels.
 	on('ui.render', { component: 'SessionMode' }, ($, e) => {
@@ -116,23 +116,20 @@ test('the count is a mode label in the prompt footer, on the terminal and the de
 	await start($)
 	await clock.settle()
 
-	for (const surface of ['terminal', 'desktop'] as const) {
-		const ui = await $.ui.mount({
-			plugin: 'pomodoro',
-			surface,
-			component: 'SessionMode',
-			props: { modes: ['focus'] },
-		})
-		const minutes = (clock.now() - T0) / MIN
-		expect((await ui.find({ type: 'Text', text: /🍅/ }))?.text).toBe(
-			`focus & 🍅 ${minutes}/25m`,
-		)
-		await clock.advance(MIN)
-		expect((await ui.find({ type: 'Text', text: /🍅/ }))?.text).toBe(
-			`focus & 🍅 ${minutes + 1}/25m`,
-		)
-		await ui.unmount()
-	}
+	const ui = await $.ui.mount({
+		plugin: 'pomodoro',
+		surface: 'terminal',
+		component: 'SessionMode',
+		props: { modes: ['focus'] },
+	})
+	expect((await ui.find({ type: 'Text', text: /🍅/ }))?.text).toBe(
+		'focus & 🍅 0/25m',
+	)
+	await clock.advance(MIN)
+	expect((await ui.find({ type: 'Text', text: /🍅/ }))?.text).toBe(
+		'focus & 🍅 1/25m',
+	)
+	await ui.unmount()
 })
 
 test('the status line, which Claude Code marks ⚠, shows only while a break is due', async ($, on) => {
@@ -151,39 +148,16 @@ test('the status line, which Claude Code marks ⚠, shows only while a break is 
 	expect(status.at(-1)).toBe(undefined)
 })
 
-test('the desktop app: a session that starts headless counts once the app attaches; VS Code and a -p run never do', async ($, on) => {
+test('a session with nobody at its prompt never counts: -p, VS Code, the desktop app', async ($, on) => {
 	const { clock, labels } = world(on, () => 0)
-	on('session.surfaces', () => ({ value: [] }))
 	on('session.attach', (_, e) => ({ clientId: e.clientId }))
 	await $.session.start({ cwd: '/', surface: null, isInteractive: false })
 	await clock.advance(2 * MIN)
 	expect(labels).toEqual([])
 
-	// VS Code attaches to its sessions too, but has no footer to show the count in.
+	// VS Code and the desktop app attach to a session that started headless; neither starts the clock.
 	await $.session.attach({ surface: 'vscode', clientId: 'vscode:default' })
-	await clock.advance(MIN)
-	expect(labels).toEqual([])
-
 	await $.session.attach({ surface: 'desktop', clientId: 'desktop:default' })
-	await clock.settle()
-	expect(labels.at(-1)).toBe('🍅 0/25m')
-	await clock.advance(MIN)
-	expect(labels.at(-1)).toBe('🍅 1/25m')
-})
-
-test('a reload while the desktop app is attached keeps counting', async ($, on) => {
-	const { clock, labels } = world(on, () => 0)
-	// A reload raises session.start again, but the app, attached already, raises no new session.attach.
-	on('session.surfaces', () => ({ value: ['desktop'] }))
-	await $.session.start({ cwd: '/', surface: null, isInteractive: false })
-	await clock.settle()
-	expect(labels.at(-1)).toBe('🍅 0/25m')
-})
-
-test('a reload in a VS Code session still does not count', async ($, on) => {
-	const { clock, labels } = world(on, () => 0)
-	on('session.surfaces', () => ({ value: ['vscode'] }))
-	await $.session.start({ cwd: '/', surface: null, isInteractive: false })
 	await clock.advance(MIN)
 	expect(labels).toEqual([])
 })
