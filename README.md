@@ -20,7 +20,7 @@ claude plugin install pomodoro --marketplace LRNZ09/pomodoro
 
 It needs Claude Code 2.1.304 or later, and runs in terminal sessions only: not in the desktop app, VS Code or `claude -p`. It's built on Claude Code's plugin API for TypeScript hooks, which is in early access, so a Claude Code update can break it.
 
-To keep the timer without the check-in, set `checkIn` to `false` under `/config`. To remove the plugin, and the timer data it keeps:
+To keep the timer without the check-in, set `checkIn` to `false` under `/config`. To remove the plugin:
 
 ```
 claude plugin uninstall pomodoro@pomodoro
