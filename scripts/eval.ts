@@ -17,7 +17,7 @@ for (const model of MODELS) {
 	const json = `${results}/${model}.json`
 	await rm(json, { force: true })
 	// It exits 1 when any run ends on an API error, whatever the scores: the JSON still holds the others.
-	await $`claude plugin eval . --model ${model} --runs ${runs} --ablation none --trust-plugin --allow-tools Write --no-publish --threshold 0 --json ${json} --output-dir ${results}/${model}`.nothrow()
+	await $`claude plugin eval . --model ${model} --runs ${runs} --ablation none --trust-plugin --allow-tools Read Write --no-publish --threshold 0 --json ${json} --output-dir ${results}/${model}`.nothrow()
 	if (!(await Bun.file(json).exists())) {
 		isComplete = false
 		rows.push(`| ${model} | no result |`)

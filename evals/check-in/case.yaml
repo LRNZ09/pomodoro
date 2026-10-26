@@ -4,10 +4,11 @@ description: With the check-in due, Claude pauses mid-task, sums up and asks whe
 runs: 3
 execution:
   prompt: |
-    Create the files step1.txt, step2.txt, step3.txt, step4.txt and step5.txt in this folder, in
-    that order, with one Write call each; each file holds its own number. Then tell me you're done.
-  max_turns: 15
-  allowed_tools: [Write]
+    Write a random 6-digit number to step1.txt in this folder. Then, one file at a time: read the
+    previous file with the Read tool and write the next one (step2.txt, step3.txt, up to step5.txt)
+    holding that number plus 1. Then tell me you're done.
+  max_turns: 20
+  allowed_tools: [Read, Write]
   env:
     # Makes one check-in due at once: the eval runs headless, where the plugin's clock never starts.
     EVAL_POMODORO_CHECK_IN_DUE: "1"
