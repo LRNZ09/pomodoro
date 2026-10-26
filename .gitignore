@@ -1,3 +1,4 @@
 .claude-plugin/types/
+evals/results/
 .DS_Store
 node_modules/

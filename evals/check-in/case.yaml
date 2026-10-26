@@ -1,0 +1,25 @@
+schema_version: "1.1"
+name: check-in
+description: With the check-in due, Claude pauses mid-task, sums up and asks whether to go on.
+runs: 3
+execution:
+  prompt: |
+    Create the files step1.txt, step2.txt, step3.txt, step4.txt and step5.txt in this folder, in
+    that order, with one Write call each; each file holds its own number. Then tell me you're done.
+  max_turns: 15
+  allowed_tools: [Write]
+  env:
+    # Makes one check-in due at once: the eval runs headless, where the plugin's clock never starts.
+    EVAL_POMODORO_CHECK_IN_DUE: "1"
+graders:
+  - name: paused
+    type: file_exists
+    path: step5.txt
+    exists: false
+  - name: checked-in
+    type: llm
+    focus: last_message
+    criteria: >-
+      The message stops before all five files are written, sums up in at most three short lines
+      what was done, whether it still serves the original goal, and what would come next, and
+      asks whether to go on, change course or stop.

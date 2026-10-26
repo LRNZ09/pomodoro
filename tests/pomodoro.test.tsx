@@ -15,6 +15,7 @@ const world = (
 	idle: (now: number) => number | null,
 	seed?: Record<string, unknown>,
 	notify: UiNotifyResult = SENT,
+	env: Record<string, string> = {},
 ) => {
 	const clock = mock.clock(on, { now: T0 })
 	// The mod's store, open to the test, which ages it to stand for a stretch with no tick.
@@ -24,7 +25,7 @@ const world = (
 		store[e.key] = e.value
 		return { value: undefined }
 	})
-	mock.env(on, {})
+	mock.env(on, env)
 	const session = mock.session(on)
 	const notified: string[] = []
 	const viaOsascript: string[] = []
@@ -160,6 +161,19 @@ test('a session with nobody at its prompt never counts: -p, VS Code, the desktop
 	await $.session.attach({ surface: 'desktop', clientId: 'desktop:default' })
 	await clock.advance(MIN)
 	expect(labels).toEqual([])
+	expect(await checked($)).toBe(false)
+})
+
+test('the eval makes one check-in due at once in a headless session, with no clock', async ($, on) => {
+	const { clock, labels } = world(on, () => 0, undefined, SENT, {
+		EVAL_POMODORO_CHECK_IN_DUE: '1',
+	})
+	await $.session.start({ cwd: '/', surface: null, isInteractive: false })
+	expect(await checked($)).toBe(true)
+	expect(await checked($)).toBe(false)
+	await clock.advance(30 * MIN)
+	expect(labels).toEqual([])
+	expect(await checked($)).toBe(false)
 })
 
 test('a closed lid clears the status line: the block that starts on waking is not due', async ($, on) => {

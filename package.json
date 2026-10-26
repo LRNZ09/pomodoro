@@ -3,10 +3,12 @@
 	"private": true,
 	"scripts": {
 		"check": "biome check",
+		"eval": "bun scripts/eval.ts",
 		"fix": "biome check --write"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.6.2",
-		"@lrnz09/biome-config": "1.2.0"
+		"@lrnz09/biome-config": "1.2.0",
+		"@types/bun": "1.3.14"
 	}
 }

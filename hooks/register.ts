@@ -222,6 +222,9 @@ async function begin($: EngineInterface, options: PluginOptions) {
 export const register: Register = (on, options) => {
 	on('session.start', async ($, e, next) => {
 		if (e.isInteractive) await begin($, options)
+		// The eval (evals/check-in) runs headless, where the clock never starts: it makes one check-in due at once.
+		else if (options.checkIn && (await $.env.get('EVAL_POMODORO_CHECK_IN_DUE')))
+			due = { key: 0, text: check(Number(options.workMinutes)) }
 		return next(e)
 	})
 
