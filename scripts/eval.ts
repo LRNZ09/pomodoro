@@ -3,7 +3,11 @@
 import { rm } from 'node:fs/promises'
 import { $ } from 'bun'
 
-type Run = { passed: boolean; error: string | null }
+type Run = {
+	passed: boolean
+	error: string | null
+	graders: { name: string; passed: boolean }[]
+}
 
 const MODELS = ['haiku', 'sonnet', 'opus']
 const runs = Number(process.argv[2] ?? 10)
@@ -32,14 +36,19 @@ for (const model of MODELS) {
 	const graded = all.filter((run) => !run.error)
 	const errored = all.length - graded.length
 	if (errored > 0) isComplete = false
+	// Stopping and checking in fully apart: a model can pause and still miss a line of the summary.
+	const paused = graded.filter((run) =>
+		run.graders.some((g) => g.name === 'paused' && g.passed),
+	).length
+	const name = model[0]?.toUpperCase() + model.slice(1)
 	rows.push(
-		`| ${model} | ${graded.filter((run) => run.passed).length}/${graded.length}${errored > 0 ? ` (${errored} errored)` : ''} |`,
+		`| ${name} | ${paused}/${graded.length} | ${graded.filter((run) => run.passed).length}/${graded.length}${errored > 0 ? ` (${errored} errored)` : ''} |`,
 	)
 }
 
 const date = new Date().toISOString().slice(0, 10)
-console.log(`| Model | Paused and checked in |
-| ----- | --------------------- |
+console.log(`| Model | Paused | Paused and checked in |
+| ----- | ------ | --------------------- |
 ${rows.join('\n')}
 
 Plugin ${version}, Claude Code ${claudeVersion}, ${date}.`)
