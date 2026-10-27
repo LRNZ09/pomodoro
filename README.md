@@ -2,6 +2,16 @@
 
 One rhythm for you and Claude on long sessions: every 25 minutes of work, you get told to take a break, and Claude pauses to tell you what it did, whether it has drifted from the goal, and what it would do next, then asks whether to go on.
 
+How often Claude pauses, from the eval in [`evals/check-in`](evals/check-in/case.yaml), 10 runs per model:
+
+| Model  | Paused | Paused and checked in |
+| ------ | ------ | --------------------- |
+| Haiku  | 5/10   | 5/10                  |
+| Sonnet | 10/10  | 10/10                 |
+| Opus   | 10/10  | 8/10                  |
+
+Plugin 0.3.0, Claude Code 2.1.308, 2026-10-27. Checked in means the answer said what was done, whether it's still on the goal and what comes next, then asked whether to go on. Haiku sometimes takes the check-in for a hook's note rather than yours, and carries on.
+
 ## Install
 
 At the prompt of a Claude Code terminal session:
