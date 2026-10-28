@@ -7,8 +7,11 @@ type Timer = {
 	alertedAt?: number
 	lastInput?: number
 }
+// Claude's answer to a check-in, kept in $.store for /pomodoro today.
+type CheckIn = { at: number; repo: string | null; text: string }
 
 const MINUTE = 60_000
+const DAY = 24 * 60 * MINUTE
 // The last check delivered, kept in $.state: a reload (a /config change) starts the module over, not the session.
 const SENT = { plugin: 'pomodoro', key: 'sentKey' } as const
 const LABEL = { plugin: 'pomodoro', key: 'label' } as const
@@ -18,6 +21,10 @@ let isStarted = false
 let lastActivity = 0
 let due: { key: number; text: string } | undefined
 let sentKey: number | undefined
+// Whether this turn got the check-in, and its answer is still to log.
+// ponytail: a reload before the turn ends loses both, so that answer isn't logged and no menu opens; move them to $.state if that matters
+let isCheckInTurn = false
+let awaitingAnswer = false
 // The watcher's input: the stretch of mouse movement under way, and the last input that counts (undefined: no watcher).
 const stretch = { start: 0, last: 0 }
 let lastInputThatCounts: number | undefined
@@ -44,7 +51,7 @@ const check = (minutes: number) =>
 	`[Pomodoro] The user has been working for ${minutes} minutes without a break. ` +
 	'Pause now: finish only what would otherwise be left half-done, start nothing new, and tell them in at most three short lines: ' +
 	'what was done since the break, whether it still serves the original goal or has drifted into a side problem, and what you would do next. ' +
-	'Ask whether to go on, change course or stop, remind them to take a short break, then end your turn and wait for their answer.'
+	'Remind them to take a short break, then end your turn without asking anything: a menu will ask them whether to go on.'
 
 // Keys, clicks and scrolls count at once, mouse movement once its stretch lasts `minMs`: a mouse jiggler's nudge
 // (keep-awake apps) is a blip.
@@ -202,6 +209,48 @@ async function tick($: EngineInterface, options: PluginOptions) {
 	}
 }
 
+// ponytail: read-then-write, so two sessions logging in the same instant can drop one
+async function logAnswer($: EngineInterface, text: string) {
+	const at = await $.clock.now()
+	const repo = (await $.session.repo())?.root ?? null
+	const kept = (((await $.store.get('checkIns')) ?? []) as CheckIn[]).filter(
+		(c) => at - c.at < 14 * DAY,
+	)
+	await $.store.set('checkIns', [
+		...kept,
+		{ at, repo, text: text.slice(0, 4_000) },
+	])
+}
+
+// Today's check-ins at local time, under the name of their repository's folder.
+async function today($: EngineInterface) {
+	const day = new Date(await $.clock.now()).toDateString()
+	const byRepo = new Map<string | null, string[]>()
+	for (const { at, repo, text } of ((await $.store.get('checkIns')) ??
+		[]) as CheckIn[])
+		if (new Date(at).toDateString() === day)
+			byRepo.set(repo, [
+				...(byRepo.get(repo) ?? []),
+				`  ${new Date(at).toTimeString().slice(0, 5)}  ${text.replaceAll('\n', '\n         ')}`,
+			])
+	if (byRepo.size === 0) return 'No check-ins today.'
+	return [...byRepo]
+		.map(([repo, lines]) =>
+			[repo?.split(/[/\\]/).at(-1) ?? 'no repository', ...lines].join('\n'),
+		)
+		.join('\n\n')
+}
+
+// The menu after a check-in: Continue goes on, text typed under Other is the new course, Stop leaves it there.
+// It rejects when dismissed or left unanswered, so nothing goes on without the person.
+async function askToGoOn($: EngineInterface) {
+	const choice = await $.ui.ask('Continue, change course or stop?', {
+		header: 'Pomodoro',
+		options: ['Continue', 'Stop'],
+	})
+	if (choice !== 'Stop') await $.prompt.submit({ text: choice, asUser: true })
+}
+
 // The clock runs where the count shows: an interactive terminal session. Never in -p, VS Code or the desktop app.
 async function begin($: EngineInterface, options: PluginOptions) {
 	if (isStarted) return
@@ -221,6 +270,13 @@ async function begin($: EngineInterface, options: PluginOptions) {
 
 export const register: Register = (on, options) => {
 	on('session.start', async ($, e, next) => {
+		await $.command
+			.register({
+				name: 'pomodoro',
+				description: "Lists today's check-ins by repository.",
+				argumentHint: 'today',
+			})
+			.catch(() => {})
 		if (e.isInteractive) await begin($, options)
 		// The eval (evals/check-in) runs headless, where the clock never starts: it makes one check-in due at once.
 		else if (options.checkIn && (await $.env.get('EVAL_POMODORO_CHECK_IN_DUE')))
@@ -255,6 +311,8 @@ export const register: Register = (on, options) => {
 		)
 			return ran
 		sentKey = due.key
+		isCheckInTurn = true
+		awaitingAnswer = true
 		void $.state.set(SENT, due.key).catch(() => {})
 		void $.session
 			.append({
@@ -271,4 +329,39 @@ export const register: Register = (on, options) => {
 			.catch(() => {})
 		return { ...ran, context: [...(ran.context ?? []), due.text] }
 	})
+
+	// Claude's answer to a check-in is the text of the main loop's first response after it that ends the turn or asks
+	// with a menu: picking from the menu goes on in the same turn, so the turn's last text can come after the summary.
+	on('turn.step', async function* ($, e, next) {
+		const step = yield* next(e)
+		if (
+			awaitingAnswer &&
+			e.agentId === undefined &&
+			step.answer.trim() !== '' &&
+			step.toolUses.every((use) => use.name === 'AskUserQuestion')
+		) {
+			awaitingAnswer = false
+			await logAnswer($, step.answer.trim()).catch(() => {})
+		}
+		return step
+	})
+
+	// The check-in turn's end opens the menu, unless it was interrupted. An answer still unlogged (an error, an
+	// interrupt) isn't left for the next turn.
+	on('turn.complete', async ($, e, next) => {
+		const ended = await next(e)
+		if (e.agentId === undefined) {
+			if (isCheckInTurn && e.reason === 'answer')
+				void askToGoOn($).catch(() => {})
+			isCheckInTurn = false
+			awaitingAnswer = false
+		}
+		return ended
+	})
+
+	on('command.run', { command: 'pomodoro' }, async ($, e) => ({
+		text: ['', 'today'].includes(e.args.trim())
+			? await today($)
+			: 'Usage: /pomodoro [today]',
+	}))
 }

@@ -1,6 +1,6 @@
 # Pomodoro plugin for Claude Code
 
-One rhythm for you and Claude on long sessions: every 25 minutes of work, you get told to take a break, and Claude pauses to tell you what it did, whether it has drifted from the goal, and what it would do next, then asks whether to go on.
+One rhythm for you and Claude on long sessions: every 25 minutes of work, you get told to take a break, and Claude pauses to tell you what it did, whether it has drifted from the goal, and what it would do next, then a menu asks whether to go on.
 
 How often Claude pauses, from the eval in [`evals/check-in`](evals/check-in/case.yaml), 10 runs per model:
 
@@ -10,7 +10,7 @@ How often Claude pauses, from the eval in [`evals/check-in`](evals/check-in/case
 | Sonnet | 10/10  | 10/10                 |
 | Opus   | 10/10  | 8/10                  |
 
-Plugin 0.3.0, Claude Code 2.1.308, 2026-10-27. Checked in means the answer said what was done, whether it's still on the goal and what comes next, then asked whether to go on. Haiku sometimes takes the check-in for a hook's note rather than yours, and carries on.
+Plugin 0.3.0, Claude Code 2.1.308, 2026-10-27. Checked in means the answer said what was done, whether it's still on the goal and what comes next. Haiku sometimes takes the check-in for a hook's note rather than yours, and carries on.
 
 ## Install
 
@@ -38,7 +38,8 @@ claude plugin uninstall pomodoro@pomodoro
 
 ## Features
 
-- **Check-in.** Once the block is up, Claude gets a note with its next tool result. The note tells it to finish only what would otherwise be left half-done, then give you, in three lines at most: what it did since the break, whether it's still on the original goal or has drifted into a side problem, and what it would do next. Then Claude asks whether to go on. A line in the transcript tells you why Claude stopped. The check-in is sent once for every 25 minutes without a break, and only while Claude is working: it never waits in an idle session for your next prompt. It reaches the main conversation only, so during a long-running subagent it comes once the subagent returns.
+- **Check-in.** Once the block is up, Claude gets a note with its next tool result. The note tells it to finish only what would otherwise be left half-done, then give you, in three lines at most: what it did since the break, whether it's still on the original goal or has drifted into a side problem, and what it would do next. Once Claude ends that turn, a menu asks whether to go on: **Continue** sends "Continue" as your next prompt, **Stop** leaves it there, and what you type under Other goes to Claude as the new course. A line in the transcript tells you why Claude stopped. The check-in is sent once for every 25 minutes without a break, and only while Claude is working: it never waits in an idle session for your next prompt. It reaches the main conversation only, so during a long-running subagent it comes once the subagent returns.
+- **Log.** Claude's summary at each check-in is kept for 14 days, with the time and the repository, in Claude Code's plugin store on this machine (`~/.claude/plugins/store/`). `/pomodoro today` lists today's, by repository.
 - **Count.** Shows how long you've worked since your last break, at the right of the prompt footer beside its other labels: `🍅 12/25m`. Once a break is due, a status line under the prompt says so too; Claude Code draws a plugin's status line in yellow with a ⚠, as `⚠ pomodoro: 🍅 27m, time for a break`. A phone following the session shows that line only.
 - **Alert.** After a 25-minute block it plays a chime and shows a toast and a desktop notification. The alert repeats every 5 minutes until you take a break, but not once you've been away from the keyboard for 2 minutes (the break may already be under way).
 

@@ -1,6 +1,6 @@
 {
 	"name": "pomodoro",
-	"description": "One rhythm for you and Claude Code: a break when your 25 minutes are up, and a check-in where Claude sums up and asks whether to go on.",
+	"description": "One rhythm for you and Claude Code: a break when your 25 minutes are up, and a check-in where Claude sums up and you choose whether to go on.",
 	"owner": { "name": "Lorenzo Pieri" },
 	"plugins": [{ "name": "pomodoro", "source": "./" }]
 }

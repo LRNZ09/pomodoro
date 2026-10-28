@@ -4,11 +4,12 @@ import { expect, mock, test } from 'claude-code/testing'
 
 const T0 = 1_700_000_000_000
 const MIN = 60_000
+const DAY = 24 * 60 * MIN
 
 const SENT: UiNotifyResult = { isSent: true, channel: 'ghostty' }
 
 // The engine beneath the mod: a clock, a store, ioreg reporting `idle(now)` (null: no ioreg), the terminal's
-// answer to a notification, and recorders. `notified` holds every banner, `viaOsascript` those osascript posted,
+// answer to a notification, a repository at /code/app, and recorders. `notified` holds every banner, `viaOsascript` those osascript posted,
 // `labels` each count written for the prompt footer.
 const world = (
 	on: On,
@@ -33,7 +34,61 @@ const world = (
 	const labels: string[] = []
 	const chimes: number[] = []
 	on('session.start', (_, e) => ({ cwd: e.cwd }))
-	on('tool.call', () => ({ result: {} }))
+	// The menu the mod opens: each question asked, answered with `pick` (undefined: dismissed).
+	const menu: { pick?: string; asked: string[] } = { asked: [] }
+	on('tool.call', (_, e) => {
+		if (e.tool !== 'AskUserQuestion') return { result: {} }
+		const question = e.questions[0]?.question ?? ''
+		menu.asked.push(question)
+		return {
+			result: {
+				questions: e.questions,
+				answers: menu.pick === undefined ? {} : { [question]: menu.pick },
+			},
+		}
+	})
+	const submitted: string[] = []
+	on('prompt.submit', (_, e) => {
+		submitted.push(e.text)
+		return { text: e.text }
+	})
+	on('command.register', (_, e) => ({ value: { command: e.name } }))
+	on('session.repo', () => ({
+		value: { root: '/code/app', remote: null, internal: false, name: null },
+	}))
+	on('turn.complete', (_, e) => ({ text: e.answer }))
+	// The model: its next response, which `respond` sets.
+	let reply = { answer: '', tools: [] as string[] }
+	on('turn.step', async function* (_, e) {
+		yield* []
+		return {
+			turnId: e.turnId,
+			index: e.index,
+			answer: reply.answer,
+			toolUses: reply.tools.map((name) => ({ name, input: {} })),
+			stopReason: reply.tools.length > 0 ? 'tool_use' : 'end_turn',
+			usage: null,
+		}
+	})
+	// A response of the main loop, or of a subagent's run with `agentId`: its text and the tools it calls.
+	const respond = async (
+		$: Engine,
+		answer: string,
+		tools: string[] = [],
+		agentId?: string,
+	) => {
+		reply = { answer, tools }
+		const step = $.turn.step({
+			turnId: 't',
+			index: 0,
+			model: 'claude',
+			messageCount: 1,
+			agentId,
+		})
+		for await (const _ of step) {
+		}
+		return step.result
+	}
 	on('process.run', (_, e) => {
 		if (e.argv[0] === 'afplay') chimes.push(clock.now())
 		if (e.argv[0] === 'osascript') {
@@ -80,6 +135,9 @@ const world = (
 		labels,
 		toasts,
 		chimes,
+		respond,
+		menu,
+		submitted,
 	}
 }
 
@@ -91,6 +149,30 @@ const checked = async ($: Engine) =>
 	JSON.stringify(await $.tool.call({ tool: 'Bash', command: 'ls' })).includes(
 		'[Pomodoro]',
 	)
+
+// The end of the main loop's turn, answered or interrupted.
+const endTurn = ($: Engine, reason: 'answer' | 'aborted' = 'answer') =>
+	$.turn.complete({
+		answer: '',
+		durationMs: 1,
+		isAborted: reason === 'aborted',
+		turnId: 't',
+		reason,
+	})
+
+// What /pomodoro today prints.
+const listed = async ($: Engine) =>
+	(
+		await $.command.run({
+			command: 'pomodoro',
+			args: 'today',
+			origin: { kind: 'composer' },
+			presentation: { isFullscreen: false, columns: 80 },
+		})
+	).text
+
+const texts = (checkIns: unknown) =>
+	(checkIns as { text: string }[]).map((c) => c.text)
 
 test('alerts at the block end, then every break length while there is no break', async ($, on) => {
 	const { clock, notified, chimes } = world(on, () => 0)
@@ -363,6 +445,99 @@ test(
 		expect(await checked($)).toBe(false)
 	},
 )
+
+// Listed at the moment it's logged, so the day matches in any time zone: CI's and this Mac's differ.
+test('the answer to a check-in is logged, and /pomodoro today lists it by repository', async ($, on) => {
+	const { clock, store, respond } = world(on, () => 0)
+	await start($)
+	expect(await listed($)).toBe('No check-ins today.')
+
+	// A response with no check-in before it logs nothing.
+	await respond($, 'Done.')
+	expect(store.checkIns).toBe(undefined)
+
+	await clock.advance(26 * MIN)
+	expect(await checked($)).toBe(true)
+	// Neither a subagent's report nor a step finishing what was half-done is the answer.
+	await respond($, 'Report.', [], 'a1')
+	await respond($, 'Writing step3 first.', ['Write'])
+	await respond($, 'Wrote step1 to step3.\nGo on?')
+	await respond($, 'Done.')
+	expect(texts(store.checkIns)).toEqual(['Wrote step1 to step3.\nGo on?'])
+	expect(await listed($)).toMatch(
+		/^app\n {2}\d\d:\d\d {2}Wrote step1 to step3\.\n {9}Go on\?$/,
+	)
+})
+
+test('a summary asked with a menu is the answer, not what comes after the pick', async ($, on) => {
+	const { clock, store, respond } = world(on, () => 0)
+	await start($)
+	await clock.advance(26 * MIN)
+	expect(await checked($)).toBe(true)
+	await respond($, 'Wrote step1 to step3.', ['AskUserQuestion'])
+	// Go on: the same turn goes on.
+	await respond($, 'Going on.', ['Write'])
+	await respond($, 'Done.')
+	await endTurn($)
+	expect(texts(store.checkIns)).toEqual(['Wrote step1 to step3.'])
+})
+
+test("an interrupted check-in logs nothing, opens no menu, and the next turn isn't taken for its answer", async ($, on) => {
+	const { clock, store, respond, menu } = world(on, () => 0)
+	await start($)
+	await clock.advance(26 * MIN)
+	expect(await checked($)).toBe(true)
+	await endTurn($, 'aborted')
+	await clock.settle()
+	await respond($, 'Something else.')
+	await endTurn($)
+	await clock.settle()
+	expect(store.checkIns).toBe(undefined)
+	expect(menu.asked).toEqual([])
+})
+
+test('once the check-in turn ends, a menu asks whether to go on', async ($, on) => {
+	const { clock, menu, submitted } = world(on, () => 0)
+	await start($)
+	// A turn with no check-in opens none.
+	await endTurn($)
+	await clock.settle()
+	expect(menu.asked).toEqual([])
+
+	await clock.advance(26 * MIN)
+	expect(await checked($)).toBe(true)
+	menu.pick = 'Continue'
+	await endTurn($)
+	await clock.settle()
+	expect(menu.asked).toEqual(['Continue, change course or stop?'])
+	expect(submitted).toEqual(['Continue'])
+
+	// Next periods: Stop, a dismissed menu and an empty answer send nothing; text typed under Other is the new course.
+	for (const pick of ['Stop', undefined, ' ', 'Fix the tests first.']) {
+		await clock.advance(25 * MIN)
+		expect(await checked($)).toBe(true)
+		menu.pick = pick
+		await endTurn($)
+		await clock.settle()
+	}
+	expect(menu.asked.length).toBe(5)
+	expect(submitted).toEqual(['Continue', 'Fix the tests first.'])
+})
+
+test("check-ins older than 14 days are dropped, and /pomodoro today lists only today's", async ($, on) => {
+	const { clock, store, respond } = world(on, () => 0, {
+		checkIns: [
+			{ at: T0 - 15 * DAY, repo: '/code/app', text: 'Old.' },
+			{ at: T0 - 2 * DAY, repo: null, text: 'Two days ago.' },
+		],
+	})
+	await start($)
+	await clock.advance(26 * MIN)
+	expect(await checked($)).toBe(true)
+	await respond($, 'Today.')
+	expect(texts(store.checkIns)).toEqual(['Two days ago.', 'Today.'])
+	expect(await listed($)).toMatch(/^app\n {2}\d\d:\d\d {2}Today\.$/)
+})
 
 // The watcher, printing each [time, text] as it comes, sorted and after T0. It then stays running, or ends with `exits`.
 const watcher = (

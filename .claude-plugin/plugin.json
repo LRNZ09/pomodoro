@@ -3,7 +3,7 @@
 	"version": "0.3.0",
 	"author": { "name": "Lorenzo Pieri" },
 	"types": "./types/index.d.ts",
-	"description": "Pomodoro timer: a notification after a work block without a break, and a check-in where Claude stops to sum up and ask whether to go on.",
+	"description": "Pomodoro timer: a notification after a work block without a break, and a check-in where Claude stops to sum up and a menu asks whether to go on.",
 	"userConfig": {
 		"workMinutes": {
 			"type": "number",
@@ -32,7 +32,7 @@
 		"checkIn": {
 			"type": "boolean",
 			"title": "Check-in",
-			"description": "At the alert, Claude pauses, sums up what it did since the break and asks whether to go on.",
+			"description": "At the alert, Claude pauses and sums up what it did since the break, then a menu asks whether to go on.",
 			"default": true
 		},
 		"emoji": {
