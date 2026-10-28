@@ -25,6 +25,8 @@ let sentKey: number | undefined
 // ponytail: a reload before the turn ends loses both, so that answer isn't logged and no menu opens; move them to $.state if that matters
 let isCheckInTurn = false
 let awaitingAnswer = false
+// The eval's main-loop tool results still to come before its check-in is due (0: none to come).
+let evalCheckInIn = 0
 // The watcher's input: the stretch of mouse movement under way, and the last input that counts (undefined: no watcher).
 const stretch = { start: 0, last: 0 }
 let lastInputThatCounts: number | undefined
@@ -49,7 +51,10 @@ for (;;) {
 
 const check = (minutes: number) =>
 	`[Pomodoro] The user has been working for ${minutes} minutes without a break. ` +
-	'Pause now: finish only what would otherwise be left half-done, start nothing new, and tell them in at most three short lines: ' +
+	'Pause at the first point where nothing you started is left half-applied. If you are partway through one operation that leaves code, data or the repository ' +
+	"inconsistent until its last step (a migration, a rebase, a rename whose other call sites don't build yet), finish that operation and nothing more. " +
+	'Otherwise stop now: failures that were there before it, and further fixes, files or steps that each stand on their own, are not half-applied. ' +
+	'Start nothing new, then tell them in at most three short lines: ' +
 	'what was done since the break, whether it still serves the original goal or has drifted into a side problem, and what you would do next. ' +
 	'Remind them to take a short break, then end your turn without asking anything: a menu will ask them whether to go on.'
 
@@ -241,6 +246,31 @@ async function today($: EngineInterface) {
 		.join('\n\n')
 }
 
+// What git keeps in its directory while a rebase, merge, cherry-pick or revert is under way, stopped on a conflict say.
+const GIT_UNDER_WAY = [
+	'rebase-merge',
+	'rebase-apply',
+	'MERGE_HEAD',
+	'CHERRY_PICK_HEAD',
+	'REVERT_HEAD',
+]
+
+// Whether git is partway through one of those in the session's repository: Claude mustn't be stopped there.
+// shortcut: git only, in the session's own repository; a migration or a deploy is Claude's to judge from the note
+async function isGitUnderWay($: EngineInterface) {
+	const root = (await $.session.repo())?.root
+	if (root === undefined) return false
+	// A failure prints nothing, so the names land at / and aren't found.
+	const { stdout } = await $.process.run(
+		['git', 'rev-parse', '--absolute-git-dir'],
+		{ cwd: root, timeoutMs: 5_000 },
+	)
+	const found = await Promise.all(
+		GIT_UNDER_WAY.map((name) => $.fs.exists(`${stdout.trim()}/${name}`)),
+	)
+	return found.includes(true)
+}
+
 // The menu after a check-in: Continue goes on, text typed under Other is the new course, Stop leaves it there.
 // It rejects when dismissed or left unanswered, so nothing goes on without the person.
 async function askToGoOn($: EngineInterface) {
@@ -278,9 +308,10 @@ export const register: Register = (on, options) => {
 			})
 			.catch(() => {})
 		if (e.isInteractive) await begin($, options)
-		// The eval (evals/check-in) runs headless, where the clock never starts: it makes one check-in due at once.
-		else if (options.checkIn && (await $.env.get('EVAL_POMODORO_CHECK_IN_DUE')))
-			due = { key: 0, text: check(Number(options.workMinutes)) }
+		// The eval (evals/) runs headless, where the clock never starts: EVAL_POMODORO_CHECK_IN_DUE=N makes one check-in
+		// due with the main loop's Nth tool result.
+		else if (options.checkIn)
+			evalCheckInIn = Number(await $.env.get('EVAL_POMODORO_CHECK_IN_DUE')) || 0
 		return next(e)
 	})
 
@@ -303,13 +334,12 @@ export const register: Register = (on, options) => {
 	on('tool.call', async ($, e, next) => {
 		lastActivity = await $.clock.now()
 		const ran = await next(e)
-		if (
-			due === undefined ||
-			due.key === sentKey ||
-			e.agentId !== undefined ||
-			ran.deny !== undefined
-		)
-			return ran
+		if (e.agentId !== undefined || ran.deny !== undefined) return ran
+		if (evalCheckInIn > 0 && --evalCheckInIn === 0)
+			due = { key: 0, text: check(Number(options.workMinutes)) }
+		if (due === undefined || due.key === sentKey) return ran
+		// It rides the first tool result after git is done.
+		if (await isGitUnderWay($).catch(() => false)) return ran
 		sentKey = due.key
 		isCheckInTurn = true
 		awaitingAnswer = true

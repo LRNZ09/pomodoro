@@ -9,7 +9,7 @@ const DAY = 24 * 60 * MIN
 const SENT: UiNotifyResult = { isSent: true, channel: 'ghostty' }
 
 // The engine beneath the mod: a clock, a store, ioreg reporting `idle(now)` (null: no ioreg), the terminal's
-// answer to a notification, a repository at /code/app, and recorders. `notified` holds every banner, `viaOsascript` those osascript posted,
+// answer to a notification, a repository at /code/app with what its git directory holds in `gitDir`, and recorders. `notified` holds every banner, `viaOsascript` those osascript posted,
 // `labels` each count written for the prompt footer.
 const world = (
 	on: On,
@@ -89,7 +89,22 @@ const world = (
 		}
 		return step.result
 	}
+	// What exists in the repository's git directory, by name.
+	const gitDir = new Set<string>()
+	on('fs.exists', (_, e) => ({
+		value: gitDir.has(e.path.replace('/code/app/.git/', '')),
+	}))
 	on('process.run', (_, e) => {
+		if (e.argv[0] === 'git')
+			return {
+				value: {
+					exitCode: e.init?.cwd === '/code/app' ? 0 : 128,
+					stdout: e.init?.cwd === '/code/app' ? '/code/app/.git\n' : '',
+					stderr: '',
+					isStdoutTruncated: false,
+					isStderrTruncated: false,
+				},
+			}
 		if (e.argv[0] === 'afplay') chimes.push(clock.now())
 		if (e.argv[0] === 'osascript') {
 			const text =
@@ -138,6 +153,7 @@ const world = (
 		respond,
 		menu,
 		submitted,
+		gitDir,
 	}
 }
 
@@ -256,6 +272,38 @@ test('the eval makes one check-in due at once in a headless session, with no clo
 	await clock.advance(30 * MIN)
 	expect(labels).toEqual([])
 	expect(await checked($)).toBe(false)
+})
+
+test("the eval can make its check-in due with a later tool result: the main loop's third", async ($, on) => {
+	world(on, () => 0, undefined, SENT, { EVAL_POMODORO_CHECK_IN_DUE: '3' })
+	await $.session.start({ cwd: '/', surface: null, isInteractive: false })
+	expect(await checked($)).toBe(false)
+	// A subagent's tool result doesn't count. Not inline: 2.1.304's types don't know `agentId` on a tool call.
+	const subagents = { tool: 'Bash' as const, command: 'ls', agentId: 'a1' }
+	await $.tool.call(subagents)
+	expect(await checked($)).toBe(false)
+	expect(await checked($)).toBe(true)
+	expect(await checked($)).toBe(false)
+})
+
+test('the check-in waits while git is partway through a rebase, merge, cherry-pick or revert', async ($, on) => {
+	const { clock, gitDir } = world(on, () => 0)
+	await start($)
+	await clock.advance(26 * MIN)
+	for (const name of [
+		'rebase-merge',
+		'rebase-apply',
+		'MERGE_HEAD',
+		'CHERRY_PICK_HEAD',
+		'REVERT_HEAD',
+	]) {
+		gitDir.add(name)
+		expect(await checked($)).toBe(false)
+		gitDir.delete(name)
+	}
+	// Anything else in there, like a bisect, doesn't hold it.
+	gitDir.add('BISECT_LOG')
+	expect(await checked($)).toBe(true)
 })
 
 test('a closed lid clears the status line: the block that starts on waking is not due', async ($, on) => {

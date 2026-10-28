@@ -15,7 +15,8 @@ execution:
 graders:
   - name: paused
     type: file_exists
-    path: step5.txt
+    # The check-in comes with step1.txt's write: stopping at once leaves no step2.txt.
+    path: step2.txt
     exists: false
   - name: checked-in
     type: llm

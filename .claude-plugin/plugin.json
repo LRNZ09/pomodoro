@@ -32,7 +32,7 @@
 		"checkIn": {
 			"type": "boolean",
 			"title": "Check-in",
-			"description": "At the alert, Claude pauses and sums up what it did since the break, then a menu asks whether to go on.",
+			"description": "At the alert, Claude pauses at the first point where nothing it started is left half-applied and sums up what it did since the break, then a menu asks whether to go on.",
 			"default": true
 		},
 		"emoji": {
