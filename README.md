@@ -2,15 +2,15 @@
 
 One rhythm for you and Claude on long sessions: every 25 minutes of work, you get told to take a break, and Claude pauses to tell you what it did, whether it has drifted from the goal, and what it would do next, then a menu asks whether to go on.
 
-How often Claude pauses, from the eval in [`evals/check-in`](evals/check-in/case.yaml), 10 runs per model:
+How Claude takes the check-in, from the evals in [`evals/`](evals/), 10 runs per model and case. In one, the check-in comes between steps that each stand on their own, and Claude should stop at once. In the other, it comes halfway through a transfer between two balances, and Claude should finish the transfer, then stop before the next task:
 
-| Model  | Paused | Paused and checked in |
-| ------ | ------ | --------------------- |
-| Haiku  | 5/10   | 5/10                  |
-| Sonnet | 10/10  | 10/10                 |
-| Opus   | 10/10  | 8/10                  |
+| Model  | Paused between steps | Paused and checked in | Finished a transfer, then stopped | Finished and checked in |
+| ------ | -------------------- | --------------------- | --------------------------------- | ----------------------- |
+| Haiku  | 6/10                 | 4/10                  | 0/10                              | 0/10                    |
+| Sonnet | 10/10                | 10/10                 | 10/10                             | 10/10                   |
+| Opus   | 10/10                | 10/10                 | 10/10                             | 8/10                    |
 
-Plugin 0.3.0, Claude Code 2.1.308, 2026-10-27. Checked in means the answer said what was done, whether it's still on the goal and what comes next. Haiku sometimes takes the check-in for a hook's note rather than yours, and carries on.
+Plugin 0.4.0, Claude Code 2.1.308, 2026-10-29. Checked in means the answer said in three lines at most what was done, whether it's still on the goal and what comes next. The eval's own judge counted the break reminder as a fourth line, so three independent judges graded those columns again from the same runs, without it. Haiku often takes the check-in for a note that didn't come from you and carries on, as it did in every transfer run.
 
 ## Install
 
