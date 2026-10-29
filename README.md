@@ -30,6 +30,13 @@ claude plugin install pomodoro --marketplace LRNZ09/pomodoro
 
 It needs Claude Code 2.1.304 or later, and runs in terminal sessions only: not in the desktop app, VS Code or `claude -p`. It's built on Claude Code's plugin API for TypeScript hooks, which is in early access, so a Claude Code update can break it.
 
+Claude Code doesn't update plugins from a marketplace like this one by itself, unless you turn on auto-update for it under `/plugin` → Marketplaces. To update by hand, run these, then `/reload-plugins` in open sessions:
+
+```
+claude plugin marketplace update pomodoro
+claude plugin update pomodoro@pomodoro
+```
+
 To keep the timer without the check-in, set `checkIn` to `false` under `/config`. To remove the plugin:
 
 ```
