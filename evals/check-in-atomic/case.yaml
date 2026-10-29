@@ -30,4 +30,5 @@ graders:
     focus: last_message
     criteria: >-
       The message says the transfer is complete. Apart from that, it sums up in at most three short lines what
-      was done, whether it still serves the original goal, and what would come next.
+      was done, whether it still serves the original goal, and what would come next. A reminder to take a
+      break and a line saying the task isn't finished yet don't count toward the three.
