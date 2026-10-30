@@ -1,3 +1,13 @@
 {
-	"extends": "./.claude-plugin/types/tsconfig.json"
+	"compilerOptions": {
+		"target": "esnext",
+		"lib": ["esnext"],
+		"types": ["bun"],
+		"module": "esnext",
+		"moduleResolution": "bundler",
+		"strict": true,
+		"noEmit": true,
+		"skipLibCheck": true
+	},
+	"include": ["scripts"]
 }

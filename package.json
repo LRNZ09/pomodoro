@@ -5,7 +5,7 @@
 		"check": "biome check",
 		"eval": "bun scripts/eval.ts",
 		"fix": "biome check --write",
-		"typecheck": "tsc -p . && tsc -p scripts"
+		"typecheck": "tsc -p packages/claude && tsc -p ."
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.6.2",

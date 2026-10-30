@@ -31,11 +31,12 @@ jobs:
       - run: bun run check
       - name: Write the plugin API types
         # Loading the plugin from this folder writes them, even logged out; the run then stops at sign-in.
-        run: CLAUDE_CODE_PLUGIN_DIR_WATCH=1 claude -p --plugin-dir . /cost || true
+        run: CLAUDE_CODE_PLUGIN_DIR_WATCH=1 claude -p --plugin-dir packages/claude /cost || true
       - name: Check this Claude Code wrote them
         run: |
-          head -1 .claude-plugin/types/claude-code/index.d.ts
-          grep -qF "Written by Claude Code $(claude --version | cut -d' ' -f1)." .claude-plugin/types/claude-code/index.d.ts
+          head -1 packages/claude/.claude-plugin/types/claude-code/index.d.ts
+          grep -qF "Written by Claude Code $(claude --version | cut -d' ' -f1)." packages/claude/.claude-plugin/types/claude-code/index.d.ts
+      - run: claude plugin validate packages/claude
       - run: claude plugin validate .
-      - run: claude plugin test .
+      - run: claude plugin test packages/claude
       - run: bun run typecheck

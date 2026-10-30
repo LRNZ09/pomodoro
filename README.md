@@ -2,7 +2,7 @@
 
 One rhythm for you and Claude on long sessions: every 25 minutes of work, you get told to take a break, and Claude pauses to tell you what it did, whether it has drifted from the goal, and what it would do next, then a menu asks whether to go on.
 
-How Claude takes the check-in, from the evals in [`evals/`](evals/), 10 runs per model and case. In one, the check-in comes between steps that each stand on their own, and Claude should stop at once. In the other, it comes halfway through a transfer between two balances, and Claude should finish the transfer, then stop before the next task:
+How Claude takes the check-in, from the evals in [`packages/claude/evals/`](packages/claude/evals/), 10 runs per model and case. In one, the check-in comes between steps that each stand on their own, and Claude should stop at once. In the other, it comes halfway through a transfer between two balances, and Claude should finish the transfer, then stop before the next task:
 
 | Model  | Paused between steps | Paused and checked in | Finished a transfer, then stopped | Finished and checked in |
 | ------ | -------------------- | --------------------- | --------------------------------- | ----------------------- |
@@ -88,12 +88,12 @@ A Focus silences the banner unless it allows your terminal: System Settings → 
 From a clone of this repository:
 
 ```
-claude plugin validate .
-claude plugin test .
-claude --plugin-dir .
+claude plugin validate packages/claude
+claude plugin test packages/claude
+claude --plugin-dir packages/claude
 ```
 
-The last one starts a session with the mod loaded from the folder; saving a file reloads it. Each load also writes the `claude-code` module's types for your Claude Code version into `.claude-plugin/types/` (ignored by git), which `tsconfig.json` points your editor and `tsc -p .` at, so run it once after cloning.
+The last one starts a session with the mod loaded from the folder; saving a file reloads it. Each load also writes the `claude-code` module's types for your Claude Code version into `packages/claude/.claude-plugin/types/` (ignored by git), which `packages/claude/tsconfig.json` points your editor and `tsc -p packages/claude` at, so run it once after cloning.
 
 Formatting and linting use [Biome](https://biomejs.dev) with the [`@lrnz09/biome-config`](https://www.npmjs.com/package/@lrnz09/biome-config) preset:
 
@@ -104,7 +104,7 @@ bun run fix
 bun run typecheck
 ```
 
-`bun run eval` runs the check-in evals (`evals/`) on Haiku, Sonnet and Opus with your login, which costs tokens, and prints the pass-rate table. In `check-in`, the check-in comes between steps that each stand on their own, and Claude should stop at once; in `check-in-atomic`, it comes halfway through a transfer between two balances, and Claude should finish the transfer, then stop before the next, separate task.
+`bun run eval` runs the check-in evals (`packages/claude/evals/`) on Haiku, Sonnet and Opus with your login, which costs tokens, and prints the pass-rate table. In `check-in`, the check-in comes between steps that each stand on their own, and Claude should stop at once; in `check-in-atomic`, it comes halfway through a transfer between two balances, and Claude should finish the transfer, then stop before the next, separate task.
 
 ## License
 

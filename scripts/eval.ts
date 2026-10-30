@@ -17,8 +17,11 @@ const CASES = [
 	{ name: 'check-in-atomic', stopped: ['finished', 'stopped'] },
 ]
 const runs = Number(process.argv[2] ?? 10)
-const results = 'evals/results'
-const { version } = await Bun.file('.claude-plugin/plugin.json').json()
+const plugin = 'packages/claude'
+const results = `${plugin}/evals/results`
+const { version } = await Bun.file(
+	`${plugin}/.claude-plugin/plugin.json`,
+).json()
 
 const rows: string[] = []
 let claudeVersion = ''
@@ -28,7 +31,7 @@ for (const model of MODELS) {
 	await rm(json, { force: true })
 	// It exits 1 when any run ends on an API error, whatever the scores: the JSON still holds the others.
 	// --scaffold runs the cases' own scaffold scripts, which seed the transfer's two balances.
-	await $`claude plugin eval . --model ${model} --runs ${runs} --ablation none --trust-plugin --scaffold --allow-tools Read Write --no-publish --threshold 0 --json ${json} --output-dir ${results}/${model}`.nothrow()
+	await $`claude plugin eval ${plugin} --model ${model} --runs ${runs} --ablation none --trust-plugin --scaffold --allow-tools Read Write --no-publish --threshold 0 --json ${json} --output-dir ${results}/${model}`.nothrow()
 	if (!(await Bun.file(json).exists())) {
 		isComplete = false
 		rows.push(`| ${model} | no result |`)
