@@ -2,5 +2,11 @@
 	"name": "pomodoro",
 	"description": "One rhythm for you and Claude Code: a break when your 25 minutes are up, and a check-in where Claude sums up and you choose whether to go on.",
 	"owner": { "name": "Lorenzo Pieri" },
-	"plugins": [{ "name": "pomodoro", "source": "./packages/claude" }]
+	"plugins": [
+		{
+			"name": "pomodoro",
+			"description": "Pomodoro timer: a notification after a work block without a break, and a check-in where Claude stops to sum up and a menu asks whether to go on.",
+			"source": { "source": "npm", "package": "@beautifoo/claude-pomodoro" }
+		}
+	]
 }
