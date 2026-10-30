@@ -1,0 +1,17 @@
+{
+	"name": "@beautifoo/pomodoro-core",
+	"version": "0.1.0",
+	"description": "The work-and-break rhythm shared by the pomodoro plugins for Claude Code and Pi.",
+	"license": "MIT",
+	"author": "Lorenzo Pieri",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/LRNZ09/pomodoro.git",
+		"directory": "packages/core"
+	},
+	"type": "module",
+	"exports": "./index.ts",
+	"files": [
+		"index.ts"
+	]
+}

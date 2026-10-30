@@ -2,3 +2,4 @@
 packages/claude/evals/results/
 .DS_Store
 node_modules/
+packages/claude/hooks/core.ts

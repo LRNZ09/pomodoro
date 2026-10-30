@@ -11,8 +11,23 @@
         "typescript": "5.6.3",
       },
     },
+    "packages/claude": {
+      "name": "@beautifoo/claude-pomodoro",
+      "version": "0.4.0",
+      "dependencies": {
+        "@beautifoo/pomodoro-core": "0.1.0",
+      },
+    },
+    "packages/core": {
+      "name": "@beautifoo/pomodoro-core",
+      "version": "0.1.0",
+    },
   },
   "packages": {
+    "@beautifoo/claude-pomodoro": ["@beautifoo/claude-pomodoro@workspace:packages/claude"],
+
+    "@beautifoo/pomodoro-core": ["@beautifoo/pomodoro-core@workspace:packages/core"],
+
     "@biomejs/biome": ["@biomejs/biome@2.6.2", "", { "optionalDependencies": { "@biomejs/cli-android-arm64": "2.6.2", "@biomejs/cli-android-x64": "2.6.2", "@biomejs/cli-darwin-arm64": "2.6.2", "@biomejs/cli-darwin-x64": "2.6.2", "@biomejs/cli-linux-arm64": "2.6.2", "@biomejs/cli-linux-arm64-musl": "2.6.2", "@biomejs/cli-linux-x64": "2.6.2", "@biomejs/cli-linux-x64-musl": "2.6.2", "@biomejs/cli-win32-arm64": "2.6.2", "@biomejs/cli-win32-x64": "2.6.2" }, "bin": { "biome": "bin/biome" } }, "sha512-JLTFAFF9vfJcWwLhwuL4ZHflLg+XfTEC4IUnAlJRX1cMRt57++Xd1Ysb9Fdmlh9YUrvyCXfPEHjjEIqKJGdPKw=="],
 
     "@biomejs/cli-android-arm64": ["@biomejs/cli-android-arm64@2.6.2", "", { "os": "android", "cpu": "arm64" }, "sha512-dMpdpH7zFEL5FxuIA9LJW+RoNyC3oeDB7PJyjqVVwtMNoKB5uo8OZYmrVSBikn71txzYwy/3xga7UME6bJQZ6A=="],

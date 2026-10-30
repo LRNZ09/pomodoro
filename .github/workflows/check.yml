@@ -28,6 +28,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: npm install -g @anthropic-ai/claude-code@${{ matrix.claude }}
       - run: bun install --frozen-lockfile
+      - run: bun run build # the plugin loads core from the copy this makes
       - run: bun run check
       - name: Write the plugin API types
         # Loading the plugin from this folder writes them, even logged out; the run then stops at sign-in.
@@ -38,5 +39,5 @@ jobs:
           grep -qF "Written by Claude Code $(claude --version | cut -d' ' -f1)." packages/claude/.claude-plugin/types/claude-code/index.d.ts
       - run: claude plugin validate packages/claude
       - run: claude plugin validate .
-      - run: claude plugin test packages/claude
+      - run: bun run test
       - run: bun run typecheck

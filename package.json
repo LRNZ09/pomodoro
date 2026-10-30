@@ -1,11 +1,16 @@
 {
 	"name": "pomodoro",
 	"private": true,
+	"workspaces": [
+		"packages/*"
+	],
 	"scripts": {
+		"build": "bun run --filter @beautifoo/claude-pomodoro build",
 		"check": "biome check",
-		"eval": "bun scripts/eval.ts",
+		"eval": "bun run build && bun scripts/eval.ts",
 		"fix": "biome check --write",
-		"typecheck": "tsc -p packages/claude && tsc -p ."
+		"test": "bun run build && bun test packages/core && claude plugin test packages/claude",
+		"typecheck": "bun run build && tsc -p packages/claude && tsc -p ."
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.6.2",

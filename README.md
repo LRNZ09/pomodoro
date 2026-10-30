@@ -85,20 +85,21 @@ A Focus silences the banner unless it allows your terminal: System Settings → 
 
 ## Development
 
-From a clone of this repository:
+The plugin is in `packages/claude`. The rhythm itself, with no Claude Code API in it, is in `packages/core`, to share with plugins for other agents. From a clone of this repository:
 
 ```
+bun install
+bun run build
 claude plugin validate packages/claude
-claude plugin test packages/claude
+bun run test
 claude --plugin-dir packages/claude
 ```
 
-The last one starts a session with the mod loaded from the folder; saving a file reloads it. Each load also writes the `claude-code` module's types for your Claude Code version into `packages/claude/.claude-plugin/types/` (ignored by git), which `packages/claude/tsconfig.json` points your editor and `tsc -p packages/claude` at, so run it once after cloning.
+`bun run build` copies `packages/core/index.ts` to `packages/claude/hooks/core.ts` (ignored by git), since a plugin can't import a package: run it again after editing core. `bun run test` runs core's tests and the plugin's. The last command starts a session with the mod loaded from the folder; saving a file reloads it. Each load also writes the `claude-code` module's types for your Claude Code version into `packages/claude/.claude-plugin/types/` (ignored by git), which `packages/claude/tsconfig.json` points your editor and `tsc -p packages/claude` at, so run it once after cloning.
 
 Formatting and linting use [Biome](https://biomejs.dev) with the [`@lrnz09/biome-config`](https://www.npmjs.com/package/@lrnz09/biome-config) preset:
 
 ```
-bun install
 bun run check
 bun run fix
 bun run typecheck
