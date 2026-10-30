@@ -1,4 +1,7 @@
 {
 	"$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
-	"extends": ["@lrnz09/biome-config"]
+	"extends": ["@lrnz09/biome-config"],
+	"files": {
+		"includes": ["**", "!.changeset/*.md"]
+	}
 }

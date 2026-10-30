@@ -107,6 +107,8 @@ bun run typecheck
 
 `bun run eval` runs the check-in evals (`packages/claude/evals/`) on Haiku, Sonnet and Opus with your login, which costs tokens, and prints the pass-rate table. In `check-in`, the check-in comes between steps that each stand on their own, and Claude should stop at once; in `check-in-atomic`, it comes halfway through a transfer between two balances, and Claude should finish the transfer, then stop before the next, separate task.
 
+To release, describe the change with `bunx changeset`, then run `bun run bump`: it bumps the version of each package the changesets name, writes their changelogs, and copies the plugin's version into `plugin.json`. Before a release of the plugin, run `bun run eval` and update the table above with its numbers.
+
 ## License
 
 [MIT](LICENSE)
