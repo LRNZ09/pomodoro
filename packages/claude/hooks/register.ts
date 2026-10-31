@@ -17,7 +17,7 @@ import {
 const SENT = { plugin: 'pomodoro', key: 'sentKey' } as const
 const LABEL = { plugin: 'pomodoro', key: 'label' } as const
 
-// This session's own: the rhythm's state (packages/core), and whether its clock runs.
+// This session's own: the rhythm's state (lib/core), and whether its clock runs.
 let state = initial
 let isStarted = false
 // Whether this turn got the check-in, and its answer is still to log.

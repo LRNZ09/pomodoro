@@ -15,7 +15,7 @@
 		"types"
 	],
 	"scripts": {
-		"build": "cp ../core/index.ts hooks/core.ts",
+		"build": "cp ../../lib/core/index.ts hooks/core.ts",
 		"prepack": "npm run build"
 	}
 }
