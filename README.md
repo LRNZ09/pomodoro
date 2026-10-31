@@ -95,7 +95,7 @@ bun run test
 claude --plugin-dir packages/claude
 ```
 
-`bun run build` copies `packages/core/index.ts` to `packages/claude/hooks/core.ts` (ignored by git), since a plugin can't import a package: run it again after editing core. `bun run test` runs core's tests and the plugin's. The last command starts a session with the mod loaded from the folder; saving a file reloads it. Each load also writes the `claude-code` module's types for your Claude Code version into `packages/claude/.claude-plugin/types/` (ignored by git), which `packages/claude/tsconfig.json` points your editor and `tsc -p packages/claude` at, so run it once after cloning.
+`bun run build` copies `packages/core/index.ts` to `packages/claude/hooks/core.ts` (ignored by git), since a plugin can only import its own files: run it again after editing core. `bun run test` runs core's tests and the plugin's. The last command starts a session with the mod loaded from the folder; saving a file reloads it. Each load also writes the `claude-code` module's types for your Claude Code version into `packages/claude/.claude-plugin/types/` (ignored by git), which `packages/claude/tsconfig.json` points your editor and `tsc -p packages/claude` at, so run it once after cloning.
 
 Formatting and linting use [Biome](https://biomejs.dev) with the [`@lrnz09/biome-config`](https://www.npmjs.com/package/@lrnz09/biome-config) preset:
 
@@ -107,7 +107,7 @@ bun run typecheck
 
 `bun run eval` runs the check-in evals (`packages/claude/evals/`) on Haiku, Sonnet and Opus with your login, which costs tokens, and prints the pass-rate table. In `check-in`, the check-in comes between steps that each stand on their own, and Claude should stop at once; in `check-in-atomic`, it comes halfway through a transfer between two balances, and Claude should finish the transfer, then stop before the next, separate task.
 
-To release, describe the change with `bunx changeset`, then run `bun run bump`: it bumps the version of each package the changesets name, writes their changelogs, and copies the plugin's version into `plugin.json`. Before a release of the plugin, run `bun run eval` and update the table above with its numbers. Once that's pushed to `main` and the checks pass, CI publishes each new version to npm.
+To release, describe the change with `bunx changeset`, then run `bun run bump`: it bumps the version of each package the changesets name, writes their changelogs, and copies the plugin's version into `plugin.json`. Core isn't published on its own: it ships inside the plugin, so a change to it needs a changeset for the plugin. Before a release of the plugin, run `bun run eval` and update the table above with its numbers. Once that's pushed to `main` and the checks pass, CI publishes each new version to npm.
 
 ## License
 

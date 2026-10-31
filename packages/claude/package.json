@@ -17,8 +17,5 @@
 	"scripts": {
 		"build": "cp ../core/index.ts hooks/core.ts",
 		"prepack": "npm run build"
-	},
-	"dependencies": {
-		"@beautifoo/pomodoro-core": "0.1.0"
 	}
 }
