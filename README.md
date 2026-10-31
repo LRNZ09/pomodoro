@@ -6,11 +6,11 @@ How Claude takes the check-in, from the evals in [`packages/claude/evals/`](pack
 
 | Model  | Paused between steps | Paused and checked in | Finished a transfer, then stopped | Finished and checked in |
 | ------ | -------------------- | --------------------- | --------------------------------- | ----------------------- |
-| Haiku  | 6/10                 | 4/10                  | 0/10                              | 0/10                    |
-| Sonnet | 10/10                | 10/10                 | 10/10                             | 10/10                   |
-| Opus   | 10/10                | 10/10                 | 10/10                             | 8/10                    |
+| Haiku  | 10/10                | 9/10                  | 4/10                              | 4/10                    |
+| Sonnet | 10/10                | 10/10                 | 10/10                             | 9/10                    |
+| Opus   | 10/10                | 9/10                  | 10/10                             | 10/10                   |
 
-Plugin 0.4.0, Claude Code 2.1.308, 2026-10-29. Checked in means the answer said in three lines at most what was done, whether it's still on the goal and what comes next. The eval's own judge counted the break reminder as a fourth line, so three independent judges graded those columns again from the same runs, without it. Haiku often takes the check-in for a note that didn't come from you and carries on, as it did in every transfer run.
+Plugin 0.5.0, Claude Code 2.1.308, 2026-10-31. Checked in means the answer said in three lines at most what was done, whether it's still on the goal and what comes next, as the eval's judge graded it. Haiku sometimes takes the check-in for a note that didn't come from you and carries on, as it did in 6 of the 10 transfer runs.
 
 ## Install
 
