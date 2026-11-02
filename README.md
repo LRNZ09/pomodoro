@@ -28,7 +28,7 @@ From a shell:
 claude plugin install pomodoro --marketplace LRNZ09/pomodoro
 ```
 
-It needs Claude Code 2.1.304 or later, and `npm` on your PATH, which comes with [Node.js](https://nodejs.org): Claude Code fetches the plugin from npm with it. It runs in terminal sessions only: not in the desktop app, VS Code or `claude -p`. It's built on Claude Code's plugin API for TypeScript hooks, which is in early access, so a Claude Code update can break it.
+It needs Claude Code 2.1.304 or later, and `npm` on your PATH, which comes with [Node.js](https://nodejs.org): Claude Code fetches the plugin from npm with it. Without it, the install fails with "Could not resolve @beautifoo/claude-pomodoro@latest from the npm registry: npm exited with an error". It runs in terminal sessions only: not in the desktop app, VS Code or `claude -p`. It's built on Claude Code's plugin API for TypeScript hooks, which is in early access, so a Claude Code update can break it.
 
 Claude Code doesn't update plugins from a marketplace like this one by itself, unless you turn on auto-update for it under `/plugin` → Marketplaces. To update by hand, run these, then `/reload-plugins` in open sessions:
 
