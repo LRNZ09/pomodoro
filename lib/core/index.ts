@@ -8,7 +8,7 @@ export type Timer = {
 	alertedAt?: number
 	lastInput?: number
 }
-// The agent's reply after a check-in, kept for /pomodoro today.
+// The agent's summary at a check-in, kept for /pomodoro today.
 export type CheckIn = { at: number; repo: string | null; text: string }
 // The plugin's settings as the agent stores them, read the way each one needs: Number(), `=== true`, or truthy.
 export type Settings = Readonly<
@@ -94,7 +94,7 @@ for (;;) {
 const check = (minutes: number) =>
 	`[Pomodoro] The user has been working for ${minutes} minutes without a break. Carry on with the task. ` +
 	'If it would help them, include in your next reply a short summary of the session so far, and whether it still ' +
-	'serves the original goal. Remind them to take a break.'
+	'serves the original goal, in a paragraph that starts with "Pomodoro:". Remind them to take a break.'
 
 // 🍅 before a line, unless the setting turns it off; `word` stands in where the line needs a name to make sense.
 export const tomato = (settings: Settings, word = '') =>
@@ -270,6 +270,16 @@ function toolResult(
 		effects: [{ type: 'checkIn', ...due }],
 	}
 }
+
+// The summary the note asks for: the first paragraph of a reply that starts with "Pomodoro:", with markdown around the
+// label (**Pomodoro:**) or a word before its colon (Pomodoro check-in:) allowed. Undefined: the agent didn't sum up.
+export const summary = (reply: string) =>
+	reply
+		.split(/\n\s*\n/)
+		.find((paragraph) => /^[\s#>*_]*pomodoro\b[^:\n]{0,20}:/i.test(paragraph))
+		?.replace(/^[\s#>*_]+/, '')
+		.replaceAll('**', '')
+		.trim()
 
 // The log with `entry` added, its text cut to 4,000 characters, less the entries 14 days old.
 export const logged = (log: CheckIn[], entry: CheckIn): CheckIn[] => [

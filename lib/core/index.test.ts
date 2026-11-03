@@ -8,6 +8,7 @@ import {
 	type Settings,
 	type State,
 	step,
+	summary,
 	type Timer,
 	today,
 } from './index'
@@ -144,6 +145,19 @@ test('one check-in per work period, on a main-loop tool result, and forced in a 
 		step(initial, { type: 'forceDue', afterToolResults: 1 }, off).state
 			.evalCheckInIn,
 	).toBe(0)
+})
+
+test('the summary is the first paragraph that starts with Pomodoro:, and nothing else is', () => {
+	expect(
+		summary(
+			'Ran the tests.\n\n**Pomodoro:** on the goal, the parser is next.\nTake a break.\n\n Pomodoro: again.',
+		),
+	).toBe('Pomodoro: on the goal, the parser is next.\nTake a break.')
+	expect(summary('## Pomodoro check-in: done so far.')).toBe(
+		'Pomodoro check-in: done so far.',
+	)
+	expect(summary('Done.\n\nThe pomodoro timer: unchanged.')).toBeUndefined()
+	expect(summary('Fixed the Pomodoro: label.')).toBeUndefined()
 })
 
 test("the log drops entries 14 days old and cuts long answers, and today lists only today's, by repository", () => {

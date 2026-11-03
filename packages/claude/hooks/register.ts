@@ -6,6 +6,7 @@ import {
 	logged,
 	MINUTE,
 	step,
+	summary,
 	type Timer,
 	today,
 	tomato,
@@ -19,9 +20,9 @@ const LABEL = { plugin: 'pomodoro', key: 'label' } as const
 // This session's own: the rhythm's state (lib/core), and whether its clock runs.
 let state = initial
 let isStarted = false
-// Whether Claude's reply after the check-in is still to log.
-// ponytail: a reload before the turn ends loses this, so that reply isn't logged; move it to $.state if that matters
-let awaitingAnswer = false
+// Whether the summary the check-in asked for is still to log.
+// ponytail: a reload before the turn ends loses this, so that summary isn't logged; move it to $.state if that matters
+let awaitingSummary = false
 
 // Moves the rhythm on by one event, and returns what to carry out, in order.
 function feed(event: Event, options: PluginOptions) {
@@ -121,7 +122,7 @@ async function tick($: EngineInterface, options: PluginOptions) {
 }
 
 // ponytail: read-then-write, so two sessions logging in the same instant can drop one
-async function logAnswer($: EngineInterface, text: string) {
+async function logSummary($: EngineInterface, text: string) {
 	const at = await $.clock.now()
 	const repo = (await $.session.repo())?.root ?? null
 	const log = ((await $.store.get('checkIns')) ?? []) as CheckIn[]
@@ -183,7 +184,7 @@ export const register: Register = (on, options) => {
 			options,
 		)
 		if (checkIn?.type !== 'checkIn') return ran
-		awaitingAnswer = true
+		awaitingSummary = true
 		void $.state.set(SENT, checkIn.key).catch(() => {})
 		void $.session
 			.append({
@@ -201,26 +202,24 @@ export const register: Register = (on, options) => {
 		return { ...ran, context: [...(ran.context ?? []), checkIn.text] }
 	})
 
-	// Claude's reply after a check-in is the text of the main loop's first response after it that ends the turn or asks
-	// with AskUserQuestion: an answer to that goes on in the same turn, so the turn's last text can come after the reply.
+	// The summary can come in any response of the main loop after the check-in, mid-task too, until the turn ends.
 	on('turn.step', async function* ($, e, next) {
 		const response = yield* next(e)
-		if (
-			awaitingAnswer &&
-			e.agentId === undefined &&
-			response.answer.trim() !== '' &&
-			response.toolUses.every((use) => use.name === 'AskUserQuestion')
-		) {
-			awaitingAnswer = false
-			await logAnswer($, response.answer.trim()).catch(() => {})
+		const text =
+			awaitingSummary && e.agentId === undefined
+				? summary(response.answer)
+				: undefined
+		if (text !== undefined) {
+			awaitingSummary = false
+			await logSummary($, text).catch(() => {})
 		}
 		return response
 	})
 
-	// A reply still unlogged when the turn ends (an error, an interrupt) isn't left for the next turn.
+	// No summary by the turn's end: Claude chose not to give one, or the turn was cut short.
 	on('turn.complete', async (_, e, next) => {
 		const ended = await next(e)
-		if (e.agentId === undefined) awaitingAnswer = false
+		if (e.agentId === undefined) awaitingSummary = false
 		return ended
 	})
 

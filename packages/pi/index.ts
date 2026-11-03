@@ -14,6 +14,7 @@ import {
 	logged,
 	MINUTE,
 	step,
+	summary,
 	type Timer,
 	today,
 	tomato,
@@ -75,9 +76,9 @@ export default function (pi: ExtensionAPI) {
 	let watcher: ChildProcess | undefined
 	let interval: ReturnType<typeof setInterval> | undefined
 	let wake: ReturnType<typeof setTimeout> | undefined
-	// Whether the agent's reply after the check-in is still to log.
+	// Whether the summary the check-in asked for is still to log.
 	// ponytail: a /reload or /resume starts the extension over and forgets the check-in it sent, so one can come again
-	let awaitingAnswer = false
+	let awaitingSummary = false
 
 	// Moves the rhythm on by one event (lib/core), and returns what to carry out, in order.
 	function feed(event: Event) {
@@ -155,7 +156,7 @@ export default function (pi: ExtensionAPI) {
 	}
 
 	// ponytail: read-then-write, so two sessions logging in the same instant can drop one
-	async function logAnswer(text: string, cwd: string) {
+	async function logSummary(text: string, cwd: string) {
 		const at = Date.now()
 		const { code, stdout } = await pi
 			.exec('git', ['rev-parse', '--show-toplevel'], { cwd, timeout: 5_000 })
@@ -213,7 +214,7 @@ export default function (pi: ExtensionAPI) {
 			'info',
 		)
 		// The log needs the terminal UI: the smoke test's check-ins stay out of the person's log.
-		awaitingAnswer = ctx.hasUI
+		awaitingSummary = ctx.hasUI
 		// Replacing the content drops the structured content unless it comes back too.
 		return {
 			content: [...e.content, { type: 'text', text: checkIn.text }],
@@ -221,24 +222,31 @@ export default function (pi: ExtensionAPI) {
 		}
 	})
 
-	// The agent's reply after a check-in is its first finished response after it that calls no tool.
+	// The summary can come in any of the agent's finished responses after the check-in, mid-task too, until the run ends.
+	// One cut short (an error, Escape, the length limit) ends here too, with its partial text: a retry may finish it.
 	pi.on('message_end', async (e, ctx) => {
 		const { message } = e
-		if (!('role' in message) || message.role !== 'assistant') return
-		if (!awaitingAnswer || message.stopReason !== 'stop') return
-		const text = message.content
-			.map((part) => (part.type === 'text' ? part.text : ''))
-			.join('')
-			.trim()
-		if (text === '') return
-		awaitingAnswer = false
-		await logAnswer(text, ctx.cwd).catch(() => {})
+		if (
+			!awaitingSummary ||
+			!('role' in message) ||
+			message.role !== 'assistant' ||
+			!['stop', 'toolUse'].includes(message.stopReason)
+		)
+			return
+		const text = summary(
+			message.content
+				.map((part) => (part.type === 'text' ? part.text : ''))
+				.join('\n\n'),
+		)
+		if (text === undefined) return
+		awaitingSummary = false
+		await logSummary(text, ctx.cwd).catch(() => {})
 	})
 
-	// A reply still unlogged once Pi is done with the run, retries and compaction included (agent_end can come before
-	// them), isn't left for the next run.
+	// No summary once Pi is done with the run, retries and compaction included (agent_end can come before them): the
+	// agent chose not to give one, or the run was cut short.
 	pi.on('agent_settled', () => {
-		awaitingAnswer = false
+		awaitingSummary = false
 	})
 
 	pi.registerCommand('pomodoro', {

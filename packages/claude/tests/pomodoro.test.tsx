@@ -417,51 +417,44 @@ test(
 )
 
 // Listed at the moment it's logged, so the day matches in any time zone: CI's and this Mac's differ.
-test('the reply after a check-in is logged, and /pomodoro today lists it by repository', async ($, on) => {
+test("the check-in's summary is logged from any reply in its turn, and /pomodoro today lists it by repository", async ($, on) => {
 	const { clock, store, respond } = world(on, () => 0)
 	await start($)
 	expect(await listed($)).toBe('No check-ins today.')
 
-	// A response with no check-in before it logs nothing.
-	await respond($, 'Done.')
+	// A summary with no check-in before it logs nothing.
+	await respond($, 'Pomodoro: early.')
 	expect(store.checkIns).toBe(undefined)
 
 	await clock.advance(26 * MIN)
 	expect(await checked($)).toBe(true)
-	// Neither a subagent's report nor a step that calls a tool is the reply.
-	await respond($, 'Report.', [], 'a1')
-	await respond($, 'Writing step3.', ['Write'])
-	await respond($, 'Wrote step1 to step3.\nGo on?')
-	await respond($, 'Done.')
-	expect(texts(store.checkIns)).toEqual(['Wrote step1 to step3.\nGo on?'])
+	// Neither a subagent's summary nor a reply without one is logged; one given mid-task, beside a tool call, is.
+	await respond($, 'Pomodoro: the subagent.', [], 'a1')
+	await respond($, 'Writing step2.', ['Write'])
+	await respond(
+		$,
+		'Wrote step2.\n\n**Pomodoro:** on the goal.\nTake a break.',
+		['Write'],
+	)
+	await respond($, 'Pomodoro: again.')
+	expect(texts(store.checkIns)).toEqual([
+		'Pomodoro: on the goal.\nTake a break.',
+	])
 	expect(await listed($)).toMatch(
-		/^app\n {2}\d\d:\d\d {2}Wrote step1 to step3\.\n {9}Go on\?$/,
+		/^app\n {2}\d\d:\d\d {2}Pomodoro: on the goal\.\n {9}Take a break\.$/,
 	)
 })
 
-test('a reply that asks with AskUserQuestion is the one logged, not what comes after the answer', async ($, on) => {
+test("a turn that ends without the summary, answered or cut short, logs nothing, and the next turn's isn't taken for it", async ($, on) => {
 	const { clock, store, respond } = world(on, () => 0)
 	await start($)
-	await clock.advance(26 * MIN)
-	expect(await checked($)).toBe(true)
-	await respond($, 'Wrote step1 to step3.', ['AskUserQuestion'])
-	// Go on: the same turn goes on.
-	await respond($, 'Going on.', ['Write'])
-	await respond($, 'Done.')
-	await endTurn($)
-	expect(texts(store.checkIns)).toEqual(['Wrote step1 to step3.'])
-})
-
-test("an interrupted turn logs nothing, and the next turn isn't taken for its reply", async ($, on) => {
-	const { clock, store, respond } = world(on, () => 0)
-	await start($)
-	await clock.advance(26 * MIN)
-	expect(await checked($)).toBe(true)
-	await endTurn($, 'aborted')
-	await clock.settle()
-	await respond($, 'Something else.')
-	await endTurn($)
-	await clock.settle()
+	for (const reason of ['answer', 'aborted'] as const) {
+		await clock.advance(26 * MIN)
+		expect(await checked($)).toBe(true)
+		await respond($, 'Done.')
+		await endTurn($, reason)
+		await respond($, 'Pomodoro: the next turn.')
+	}
 	expect(store.checkIns).toBe(undefined)
 })
 
@@ -475,9 +468,9 @@ test("check-ins older than 14 days are dropped, and /pomodoro today lists only t
 	await start($)
 	await clock.advance(26 * MIN)
 	expect(await checked($)).toBe(true)
-	await respond($, 'Today.')
-	expect(texts(store.checkIns)).toEqual(['Two days ago.', 'Today.'])
-	expect(await listed($)).toMatch(/^app\n {2}\d\d:\d\d {2}Today\.$/)
+	await respond($, 'Pomodoro: today.')
+	expect(texts(store.checkIns)).toEqual(['Two days ago.', 'Pomodoro: today.'])
+	expect(await listed($)).toMatch(/^app\n {2}\d\d:\d\d {2}Pomodoro: today\.$/)
 })
 
 // The watcher, printing each [time, text] as it comes, sorted and after T0. It then stays running, or ends with `exits`.
