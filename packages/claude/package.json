@@ -1,7 +1,7 @@
 {
 	"name": "@beautifoo/claude-pomodoro",
 	"version": "0.5.0",
-	"description": "Pomodoro plugin for Claude Code: a break when your 25 minutes are up, and a check-in where Claude sums up.",
+	"description": "Pomodoro plugin for Claude Code: a break when your 25 minutes are up, and a note that lets Claude sum up the session if that helps.",
 	"license": "MIT",
 	"author": "Lorenzo Pieri",
 	"repository": {

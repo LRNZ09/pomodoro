@@ -1,7 +1,7 @@
 {
 	"name": "@beautifoo/pi-pomodoro",
 	"version": "0.1.0",
-	"description": "Pomodoro for Pi: a break when your 25 minutes are up, and a check-in where the agent sums up.",
+	"description": "Pomodoro for Pi: a break when your 25 minutes are up, and a note that lets the agent sum up the session if that helps.",
 	"keywords": [
 		"pi-package"
 	],

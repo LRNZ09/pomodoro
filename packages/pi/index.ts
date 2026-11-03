@@ -1,18 +1,15 @@
 import { type ChildProcess, spawn } from 'node:child_process'
-import { existsSync } from 'node:fs'
 import { readFile, rename, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import {
 	type ExtensionAPI,
-	type ExtensionContext,
 	type ExtensionUIContext,
 	getAgentDir,
 } from '@earendil-works/pi-coding-agent'
 import {
 	type CheckIn,
 	type Event,
-	GIT_UNDER_WAY,
 	initial,
 	logged,
 	MINUTE,
@@ -66,7 +63,7 @@ async function loadSettings(path: string): Promise<Settings> {
 // Pi caches this factory per path, so everything lives in its closure, set again at each session start.
 export default function (pi: ExtensionAPI) {
 	const dir = getAgentDir()
-	// One timer per person, shared by every open Pi session; the log of check-in answers; the settings.
+	// One timer per person, shared by every open Pi session; the log of replies after check-ins; the settings.
 	const timerPath = join(dir, 'pomodoro.json')
 	const logPath = join(dir, 'pomodoro-log.json')
 	const settingsPath = join(dir, 'pomodoro-settings.json')
@@ -78,11 +75,9 @@ export default function (pi: ExtensionAPI) {
 	let watcher: ChildProcess | undefined
 	let interval: ReturnType<typeof setInterval> | undefined
 	let wake: ReturnType<typeof setTimeout> | undefined
-	// Whether this run got the check-in, whether its answer is still to log, and how the agent's last response ended.
+	// Whether the agent's reply after the check-in is still to log.
 	// ponytail: a /reload or /resume starts the extension over and forgets the check-in it sent, so one can come again
-	let isCheckInRun = false
 	let awaitingAnswer = false
-	let lastStop: string | undefined
 
 	// Moves the rhythm on by one event (lib/core), and returns what to carry out, in order.
 	function feed(event: Event) {
@@ -159,21 +154,6 @@ export default function (pi: ExtensionAPI) {
 				await alert(effect.text, effect.sound, effect.mark)
 	}
 
-	// Whether git is partway through a rebase or the like where the agent works: it mustn't be stopped there.
-	// shortcut: git only, in the session's own repository; a migration or a deploy is the agent's to judge from the note
-	async function isGitUnderWay(cwd: string) {
-		const { code, stdout } = await pi
-			.exec('git', ['rev-parse', '--absolute-git-dir'], {
-				cwd,
-				timeout: 5_000,
-			})
-			.catch(() => ({ code: 1, stdout: '' }))
-		return (
-			code === 0 &&
-			GIT_UNDER_WAY.some((name) => existsSync(join(stdout.trim(), name)))
-		)
-	}
-
 	// ponytail: read-then-write, so two sessions logging in the same instant can drop one
 	async function logAnswer(text: string, cwd: string) {
 		const at = Date.now()
@@ -185,27 +165,6 @@ export default function (pi: ExtensionAPI) {
 			logPath,
 			logged(log, { at, repo: code === 0 ? stdout.trim() : null, text }),
 		)
-	}
-
-	// The menu after a check-in: Continue goes on, Change course asks for the new course, Stop leaves it there.
-	// Dismissing it sends nothing, so nothing goes on without the person.
-	async function askToGoOn(ctx: ExtensionContext) {
-		const choice = await ctx.ui.select('Continue, change course or stop?', [
-			'Continue',
-			'Change course',
-			'Stop',
-		])
-		const text =
-			choice === 'Change course'
-				? await ctx.ui.input('Change course', 'What should the agent do?')
-				: choice === 'Continue'
-					? choice
-					: undefined
-		if (text?.trim())
-			pi.sendUserMessage(
-				text,
-				ctx.isIdle() ? undefined : { deliverAs: 'followUp' },
-			)
 	}
 
 	pi.on('session_start', async (_, ctx) => {
@@ -249,17 +208,11 @@ export default function (pi: ExtensionAPI) {
 			isMain: e.parentToolCallId === undefined,
 		})
 		if (checkIn?.type !== 'checkIn') return
-		// It rides the first tool result after git is done.
-		if (await isGitUnderWay(ctx.cwd)) {
-			feed({ type: 'checkInHeld', key: checkIn.key })
-			return
-		}
 		ctx.ui.notify(
-			`${tomato(settings)}Pomodoro: asked the agent to pause and check in.`,
+			`${tomato(settings)}Pomodoro: told the agent your work block is up.`,
 			'info',
 		)
-		// The log and the menu need the terminal UI: the smoke test's check-ins stay out of the person's log.
-		isCheckInRun = ctx.hasUI
+		// The log needs the terminal UI: the smoke test's check-ins stay out of the person's log.
 		awaitingAnswer = ctx.hasUI
 		// Replacing the content drops the structured content unless it comes back too.
 		return {
@@ -268,11 +221,10 @@ export default function (pi: ExtensionAPI) {
 		}
 	})
 
-	// The agent's answer to a check-in is its first finished response after it that calls no tool.
+	// The agent's reply after a check-in is its first finished response after it that calls no tool.
 	pi.on('message_end', async (e, ctx) => {
 		const { message } = e
 		if (!('role' in message) || message.role !== 'assistant') return
-		lastStop = message.stopReason
 		if (!awaitingAnswer || message.stopReason !== 'stop') return
 		const text = message.content
 			.map((part) => (part.type === 'text' ? part.text : ''))
@@ -283,12 +235,9 @@ export default function (pi: ExtensionAPI) {
 		await logAnswer(text, ctx.cwd).catch(() => {})
 	})
 
-	// Once Pi is done with the check-in run, retries and compaction included (agent_end can come before them), the menu
-	// opens, unless the run was cut short or ended on an error. An answer still unlogged isn't left for the next run.
-	pi.on('agent_settled', (e, ctx) => {
-		if (isCheckInRun && !e.aborted && lastStop === 'stop')
-			void askToGoOn(ctx).catch(() => {})
-		isCheckInRun = false
+	// A reply still unlogged once Pi is done with the run, retries and compaction included (agent_end can come before
+	// them), isn't left for the next run.
+	pi.on('agent_settled', () => {
 		awaitingAnswer = false
 	})
 

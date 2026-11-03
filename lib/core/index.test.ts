@@ -115,7 +115,7 @@ test("a mouse jiggler's nudge doesn't count, a key counts at once, and a second 
 	expect(ended.state.lastInputThatCounts).toBeUndefined()
 })
 
-test('one check-in per work period, on a main-loop tool result, held back for git, and forced in a headless run', () => {
+test('one check-in per work period, on a main-loop tool result, and forced in a headless run', () => {
 	let state: State = ticks(26).state
 	const toolResult = (isMain = true) => {
 		const next = step(state, { type: 'toolResult', isMain }, SETTINGS)
@@ -126,18 +126,6 @@ test('one check-in per work period, on a main-loop tool result, held back for gi
 	}
 	expect(toolResult(false)).toEqual([])
 	expect(toolResult()).toEqual([T0 + 25 * MINUTE])
-	expect(toolResult()).toEqual([])
-
-	state = ticks(26).state
-	expect(toolResult()).toEqual([T0 + 25 * MINUTE])
-	state = step(
-		state,
-		{ type: 'checkInHeld', key: T0 + 25 * MINUTE },
-		SETTINGS,
-	).state
-	expect(toolResult()).toEqual([T0 + 25 * MINUTE])
-	// A hold that comes back after a later check-in was given leaves that one sent.
-	state = step(state, { type: 'checkInHeld', key: 0 }, SETTINGS).state
 	expect(toolResult()).toEqual([])
 
 	state = step(

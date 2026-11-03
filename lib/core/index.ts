@@ -8,7 +8,7 @@ export type Timer = {
 	alertedAt?: number
 	lastInput?: number
 }
-// The agent's answer to a check-in, kept for /pomodoro today.
+// The agent's reply after a check-in, kept for /pomodoro today.
 export type CheckIn = { at: number; repo: string | null; text: string }
 // The plugin's settings as the agent stores them, read the way each one needs: Number(), `=== true`, or truthy.
 export type Settings = Readonly<
@@ -46,8 +46,6 @@ export type Event =
 	// The minute's tick, with the stored timer and the system's input idle time where the agent reads one.
 	| { type: 'tick'; now: number; timer: Timer; systemIdleMs?: number }
 	| { type: 'toolResult'; isMain: boolean }
-	// The check-in a tool result was given goes back to waiting: git is partway through a rebase or the like.
-	| { type: 'checkInHeld'; key: number }
 	// A headless run (Pi's smoke test), where the clock never starts: the check-in is due with the main loop's Nth tool
 	// result.
 	| { type: 'forceDue'; afterToolResults: number }
@@ -61,7 +59,7 @@ export type Effect =
 	// The count, and the warning while a break is due.
 	| { type: 'show'; label: string; warning?: string }
 	| { type: 'alert'; text: string; mark: string; sound: boolean }
-	// Add `text` to this tool result, or answer checkInHeld to keep it for a later one.
+	// Add `text` to this tool result.
 	| { type: 'checkIn'; key: number; text: string }
 
 export const MINUTE = 60_000
@@ -92,24 +90,11 @@ for (;;) {
 	delay(0.25)
 }`
 
-// What git keeps in its directory while a rebase, merge, cherry-pick or revert is under way, stopped on a conflict say.
-// The agent mustn't be stopped there: its plugin answers checkInHeld while any of them exists.
-export const GIT_UNDER_WAY = [
-	'rebase-merge',
-	'rebase-apply',
-	'MERGE_HEAD',
-	'CHERRY_PICK_HEAD',
-	'REVERT_HEAD',
-]
-
+// Whether to sum up, and when, is the agent's call: nothing stops it or asks the person anything.
 const check = (minutes: number) =>
-	`[Pomodoro] The user has been working for ${minutes} minutes without a break. ` +
-	'Pause at the first point where nothing you started is left half-applied. If you are partway through one operation that leaves code, data or the repository ' +
-	"inconsistent until its last step (a migration, a rebase, a rename whose other call sites don't build yet), finish that operation and nothing more. " +
-	'Otherwise stop now: failures that were there before it, and further fixes, files or steps that each stand on their own, are not half-applied. ' +
-	'Start nothing new, then tell them in at most three short lines: ' +
-	'what was done since the break, whether it still serves the original goal or has drifted into a side problem, and what you would do next. ' +
-	'Remind them to take a short break, then end your turn without asking anything: a menu will ask them whether to go on.'
+	`[Pomodoro] The user has been working for ${minutes} minutes without a break. Carry on with the task. ` +
+	'If it would help them, include in your next reply a short summary of the session so far, and whether it still ' +
+	'serves the original goal. Remind them to take a break.'
 
 // 🍅 before a line, unless the setting turns it off; `word` stands in where the line needs a name to make sense.
 export const tomato = (settings: Settings, word = '') =>
@@ -142,15 +127,6 @@ export function step(
 			return tick(state, event, settings)
 		case 'toolResult':
 			return toolResult(state, event.isMain, settings)
-		// Unless a later tool result has since been given a later check-in.
-		case 'checkInHeld':
-			return {
-				state:
-					state.sentKey === event.key
-						? { ...state, sentKey: undefined }
-						: state,
-				effects: [],
-			}
 		case 'forceDue':
 			return {
 				state: settings.checkIn

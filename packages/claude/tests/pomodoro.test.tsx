@@ -9,7 +9,7 @@ const DAY = 24 * 60 * MIN
 const SENT: UiNotifyResult = { isSent: true, channel: 'ghostty' }
 
 // The engine beneath the mod: a clock, a store, ioreg reporting `idle(now)` (null: no ioreg), the terminal's
-// answer to a notification, a repository at /code/app with what its git directory holds in `gitDir`, and recorders. `notified` holds every banner, `viaOsascript` those osascript posted,
+// answer to a notification, a repository at /code/app, and recorders. `notified` holds every banner, `viaOsascript` those osascript posted,
 // `labels` each count written for the prompt footer.
 const world = (
 	on: On,
@@ -33,24 +33,7 @@ const world = (
 	const labels: string[] = []
 	const chimes: number[] = []
 	on('session.start', (_, e) => ({ cwd: e.cwd }))
-	// The menu the mod opens: each question asked, answered with `pick` (undefined: dismissed).
-	const menu: { pick?: string; asked: string[] } = { asked: [] }
-	on('tool.call', (_, e) => {
-		if (e.tool !== 'AskUserQuestion') return { result: {} }
-		const question = e.questions[0]?.question ?? ''
-		menu.asked.push(question)
-		return {
-			result: {
-				questions: e.questions,
-				answers: menu.pick === undefined ? {} : { [question]: menu.pick },
-			},
-		}
-	})
-	const submitted: string[] = []
-	on('prompt.submit', (_, e) => {
-		submitted.push(e.text)
-		return { text: e.text }
-	})
+	on('tool.call', () => ({ result: {} }))
 	on('command.register', (_, e) => ({ value: { command: e.name } }))
 	on('session.repo', () => ({
 		value: { root: '/code/app', remote: null, internal: false, name: null },
@@ -88,22 +71,7 @@ const world = (
 		}
 		return step.result
 	}
-	// What exists in the repository's git directory, by name.
-	const gitDir = new Set<string>()
-	on('fs.exists', (_, e) => ({
-		value: gitDir.has(e.path.replace('/code/app/.git/', '')),
-	}))
 	on('process.run', (_, e) => {
-		if (e.argv[0] === 'git')
-			return {
-				value: {
-					exitCode: e.init?.cwd === '/code/app' ? 0 : 128,
-					stdout: e.init?.cwd === '/code/app' ? '/code/app/.git\n' : '',
-					stderr: '',
-					isStdoutTruncated: false,
-					isStderrTruncated: false,
-				},
-			}
 		if (e.argv[0] === 'afplay') chimes.push(clock.now())
 		if (e.argv[0] === 'osascript') {
 			const text =
@@ -150,9 +118,6 @@ const world = (
 		toasts,
 		chimes,
 		respond,
-		menu,
-		submitted,
-		gitDir,
 	}
 }
 
@@ -261,26 +226,6 @@ test('a session with nobody at its prompt never counts: -p, VS Code, the desktop
 	expect(await checked($)).toBe(false)
 })
 
-test('the check-in waits while git is partway through a rebase, merge, cherry-pick or revert', async ($, on) => {
-	const { clock, gitDir } = world(on, () => 0)
-	await start($)
-	await clock.advance(26 * MIN)
-	for (const name of [
-		'rebase-merge',
-		'rebase-apply',
-		'MERGE_HEAD',
-		'CHERRY_PICK_HEAD',
-		'REVERT_HEAD',
-	]) {
-		gitDir.add(name)
-		expect(await checked($)).toBe(false)
-		gitDir.delete(name)
-	}
-	// Anything else in there, like a bisect, doesn't hold it.
-	gitDir.add('BISECT_LOG')
-	expect(await checked($)).toBe(true)
-})
-
 test('a closed lid clears the status line: the block that starts on waking is not due', async ($, on) => {
 	const { clock, store, status, labels } = world(on, () => 0)
 	await start($)
@@ -343,7 +288,9 @@ test('the check-in rides the next tool result, once per work period, and never w
 	expect(session.appended().length).toBe(0)
 
 	expect(await checked($)).toBe(true)
-	expect(JSON.stringify(session.appended())).toContain('asked Claude to pause')
+	expect(JSON.stringify(session.appended())).toContain(
+		'told Claude your work block is up',
+	)
 	expect(await checked($)).toBe(false)
 
 	// Still no break 25 minutes later: a second check.
@@ -449,7 +396,7 @@ test(
 		])
 		expect(await checked($)).toBe(true)
 		expect(JSON.stringify(session.appended())).toContain(
-			'Pomodoro: asked Claude to pause',
+			'Pomodoro: told Claude your work block is up',
 		)
 		expect(
 			JSON.stringify([labels, status, toasts, session.appended()]),
@@ -470,7 +417,7 @@ test(
 )
 
 // Listed at the moment it's logged, so the day matches in any time zone: CI's and this Mac's differ.
-test('the answer to a check-in is logged, and /pomodoro today lists it by repository', async ($, on) => {
+test('the reply after a check-in is logged, and /pomodoro today lists it by repository', async ($, on) => {
 	const { clock, store, respond } = world(on, () => 0)
 	await start($)
 	expect(await listed($)).toBe('No check-ins today.')
@@ -481,9 +428,9 @@ test('the answer to a check-in is logged, and /pomodoro today lists it by reposi
 
 	await clock.advance(26 * MIN)
 	expect(await checked($)).toBe(true)
-	// Neither a subagent's report nor a step finishing what was half-done is the answer.
+	// Neither a subagent's report nor a step that calls a tool is the reply.
 	await respond($, 'Report.', [], 'a1')
-	await respond($, 'Writing step3 first.', ['Write'])
+	await respond($, 'Writing step3.', ['Write'])
 	await respond($, 'Wrote step1 to step3.\nGo on?')
 	await respond($, 'Done.')
 	expect(texts(store.checkIns)).toEqual(['Wrote step1 to step3.\nGo on?'])
@@ -492,7 +439,7 @@ test('the answer to a check-in is logged, and /pomodoro today lists it by reposi
 	)
 })
 
-test('a summary asked with a menu is the answer, not what comes after the pick', async ($, on) => {
+test('a reply that asks with AskUserQuestion is the one logged, not what comes after the answer', async ($, on) => {
 	const { clock, store, respond } = world(on, () => 0)
 	await start($)
 	await clock.advance(26 * MIN)
@@ -505,8 +452,8 @@ test('a summary asked with a menu is the answer, not what comes after the pick',
 	expect(texts(store.checkIns)).toEqual(['Wrote step1 to step3.'])
 })
 
-test("an interrupted check-in logs nothing, opens no menu, and the next turn isn't taken for its answer", async ($, on) => {
-	const { clock, store, respond, menu } = world(on, () => 0)
+test("an interrupted turn logs nothing, and the next turn isn't taken for its reply", async ($, on) => {
+	const { clock, store, respond } = world(on, () => 0)
 	await start($)
 	await clock.advance(26 * MIN)
 	expect(await checked($)).toBe(true)
@@ -516,35 +463,6 @@ test("an interrupted check-in logs nothing, opens no menu, and the next turn isn
 	await endTurn($)
 	await clock.settle()
 	expect(store.checkIns).toBe(undefined)
-	expect(menu.asked).toEqual([])
-})
-
-test('once the check-in turn ends, a menu asks whether to go on', async ($, on) => {
-	const { clock, menu, submitted } = world(on, () => 0)
-	await start($)
-	// A turn with no check-in opens none.
-	await endTurn($)
-	await clock.settle()
-	expect(menu.asked).toEqual([])
-
-	await clock.advance(26 * MIN)
-	expect(await checked($)).toBe(true)
-	menu.pick = 'Continue'
-	await endTurn($)
-	await clock.settle()
-	expect(menu.asked).toEqual(['Continue, change course or stop?'])
-	expect(submitted).toEqual(['Continue'])
-
-	// Next periods: Stop, a dismissed menu and an empty answer send nothing; text typed under Other is the new course.
-	for (const pick of ['Stop', undefined, ' ', 'Fix the tests first.']) {
-		await clock.advance(25 * MIN)
-		expect(await checked($)).toBe(true)
-		menu.pick = pick
-		await endTurn($)
-		await clock.settle()
-	}
-	expect(menu.asked.length).toBe(5)
-	expect(submitted).toEqual(['Continue', 'Fix the tests first.'])
 })
 
 test("check-ins older than 14 days are dropped, and /pomodoro today lists only today's", async ($, on) => {

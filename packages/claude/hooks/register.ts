@@ -2,7 +2,6 @@ import type { EngineInterface, PluginOptions, Register } from 'claude-code'
 import {
 	type CheckIn,
 	type Event,
-	GIT_UNDER_WAY,
 	initial,
 	logged,
 	MINUTE,
@@ -20,9 +19,8 @@ const LABEL = { plugin: 'pomodoro', key: 'label' } as const
 // This session's own: the rhythm's state (lib/core), and whether its clock runs.
 let state = initial
 let isStarted = false
-// Whether this turn got the check-in, and its answer is still to log.
-// ponytail: a reload before the turn ends loses both, so that answer isn't logged and no menu opens; move them to $.state if that matters
-let isCheckInTurn = false
+// Whether Claude's reply after the check-in is still to log.
+// ponytail: a reload before the turn ends loses this, so that reply isn't logged; move it to $.state if that matters
 let awaitingAnswer = false
 
 // Moves the rhythm on by one event, and returns what to carry out, in order.
@@ -130,32 +128,6 @@ async function logAnswer($: EngineInterface, text: string) {
 	await $.store.set('checkIns', logged(log, { at, repo, text }))
 }
 
-// Whether git is partway through a rebase or the like in the session's repository: Claude mustn't be stopped there.
-// shortcut: git only, in the session's own repository; a migration or a deploy is Claude's to judge from the note
-async function isGitUnderWay($: EngineInterface) {
-	const root = (await $.session.repo())?.root
-	if (root === undefined) return false
-	// A failure prints nothing, so the names land at / and aren't found.
-	const { stdout } = await $.process.run(
-		['git', 'rev-parse', '--absolute-git-dir'],
-		{ cwd: root, timeoutMs: 5_000 },
-	)
-	const found = await Promise.all(
-		GIT_UNDER_WAY.map((name) => $.fs.exists(`${stdout.trim()}/${name}`)),
-	)
-	return found.includes(true)
-}
-
-// The menu after a check-in: Continue goes on, text typed under Other is the new course, Stop leaves it there.
-// It rejects when dismissed or left unanswered, so nothing goes on without the person.
-async function askToGoOn($: EngineInterface) {
-	const choice = await $.ui.ask('Continue, change course or stop?', {
-		header: 'Pomodoro',
-		options: ['Continue', 'Stop'],
-	})
-	if (choice !== 'Stop') await $.prompt.submit({ text: choice, asUser: true })
-}
-
 // The clock runs where the count shows: an interactive terminal session. Never in -p, VS Code or the desktop app.
 async function begin($: EngineInterface, options: PluginOptions) {
 	if (isStarted) return
@@ -211,12 +183,6 @@ export const register: Register = (on, options) => {
 			options,
 		)
 		if (checkIn?.type !== 'checkIn') return ran
-		// It rides the first tool result after git is done.
-		if (await isGitUnderWay($).catch(() => false)) {
-			feed({ type: 'checkInHeld', key: checkIn.key }, options)
-			return ran
-		}
-		isCheckInTurn = true
 		awaitingAnswer = true
 		void $.state.set(SENT, checkIn.key).catch(() => {})
 		void $.session
@@ -226,7 +192,7 @@ export const register: Register = (on, options) => {
 					content: [
 						{
 							type: 'text',
-							text: `${tomato(options)}Pomodoro: asked Claude to pause and check in.`,
+							text: `${tomato(options)}Pomodoro: told Claude your work block is up.`,
 						},
 					],
 				},
@@ -235,8 +201,8 @@ export const register: Register = (on, options) => {
 		return { ...ran, context: [...(ran.context ?? []), checkIn.text] }
 	})
 
-	// Claude's answer to a check-in is the text of the main loop's first response after it that ends the turn or asks
-	// with a menu: picking from the menu goes on in the same turn, so the turn's last text can come after the summary.
+	// Claude's reply after a check-in is the text of the main loop's first response after it that ends the turn or asks
+	// with AskUserQuestion: an answer to that goes on in the same turn, so the turn's last text can come after the reply.
 	on('turn.step', async function* ($, e, next) {
 		const response = yield* next(e)
 		if (
@@ -251,16 +217,10 @@ export const register: Register = (on, options) => {
 		return response
 	})
 
-	// The check-in turn's end opens the menu, unless it was interrupted. An answer still unlogged (an error, an
-	// interrupt) isn't left for the next turn.
-	on('turn.complete', async ($, e, next) => {
+	// A reply still unlogged when the turn ends (an error, an interrupt) isn't left for the next turn.
+	on('turn.complete', async (_, e, next) => {
 		const ended = await next(e)
-		if (e.agentId === undefined) {
-			if (isCheckInTurn && e.reason === 'answer')
-				void askToGoOn($).catch(() => {})
-			isCheckInTurn = false
-			awaitingAnswer = false
-		}
+		if (e.agentId === undefined) awaitingAnswer = false
 		return ended
 	})
 

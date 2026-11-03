@@ -1,6 +1,6 @@
 # Pomodoro for Claude Code and Pi
 
-One rhythm for you and your agent on long sessions: every 25 minutes of work, you get told to take a break, and the agent pauses to tell you what it did, whether it has drifted from the goal, and what it would do next, then a menu asks whether to go on. It's a plugin for [Claude Code](https://code.claude.com) and an extension for [Pi](https://pi.dev).
+One rhythm for you and your agent on long sessions: every 25 minutes of work, you get told to take a break, and the agent is told too, so it can sum up the session so far if that would help you. It's a plugin for [Claude Code](https://code.claude.com) and an extension for [Pi](https://pi.dev).
 
 ## Install
 
@@ -46,14 +46,14 @@ Tested with Pi 1.5. It runs in Pi's terminal UI only: not with `-p`, `--mode jso
 ## Features
 
 The same in both agents, as Claude Code shows them; how Pi differs follows the list.
-- **Check-in.** Once the block is up, Claude gets a note with its next tool result. The note tells it to stop at the first point where nothing it started is left half-applied. An operation that leaves things inconsistent until its last step, like a migration, a rebase or a rename across files, gets finished first, and nothing more, so the check-in comes at its end; between fixes or steps that each stand on their own, it stops at once, and failures that were there before don't count as half-applied. Which is which is Claude's call, so the plugin can't guarantee it, except with git: while a rebase, merge, cherry-pick or revert is under way in the session's repository, the note waits until git is done. Then it gives you, in three lines at most: what it did since the break, whether it's still on the original goal or has drifted into a side problem, and what it would do next. Once Claude ends that turn, a menu asks whether to go on: **Continue** sends "Continue" as your next prompt, **Stop** leaves it there, and what you type under Other goes to Claude as the new course. A line in the transcript tells you why Claude stopped. The check-in is sent once for every 25 minutes without a break, and only while Claude is working: it never waits in an idle session for your next prompt. It reaches the main conversation only, so during a long-running subagent it comes once the subagent returns.
-- **Log.** Claude's summary at each check-in is kept for 14 days, with the time and the repository, in Claude Code's plugin store on this machine (`~/.claude/plugins/store/`). `/pomodoro today` lists today's, by repository.
+- **Check-in.** Once the block is up, Claude gets a note with its next tool result: you've worked 25 minutes without a break, it should carry on with the task, and if it would help you, include in its next reply a short summary of the session so far and whether it still serves the original goal, then remind you to take a break. Nothing stops Claude or asks you anything: whether to sum up is Claude's call. A line in the transcript tells you the note was sent. It's sent once for every 25 minutes without a break, and only while Claude is working: it never waits in an idle session for your next prompt. It reaches the main conversation only, so during a long-running subagent it comes once the subagent returns.
+- **Log.** The message Claude ends its turn with after each check-in, or asks you a question in, is kept for 14 days, with the time and the repository, in Claude Code's plugin store on this machine (`~/.claude/plugins/store/`). `/pomodoro today` lists today's, by repository.
 - **Count.** Shows how long you've worked since your last break, at the right of the prompt footer beside its other labels: `🍅 12/25m`. Once a break is due, a status line under the prompt says so too; Claude Code draws a plugin's status line in yellow with a ⚠, as `⚠ pomodoro: 🍅 27m, time for a break`. A phone following the session shows that line only.
 - **Alert.** After a 25-minute block it plays a chime and shows a toast and a desktop notification. The alert repeats every 5 minutes until you take a break, but not once you've been away from the keyboard for 2 minutes (the break may already be under way).
 
 It runs on a clock, a tick every minute, so the alert comes on time even while you're reading code and not typing to Claude.
 
-In Pi, the count and the break warning share one entry at the foot of the screen, and the alert is a warning line in Pi with the chime and a desktop notification. The menu after a check-in offers **Continue**, **Change course**, which asks you for the new course, and **Stop**. The log is in `~/.pi/agent/pomodoro-log.json`.
+In Pi, the count and the break warning share one entry at the foot of the screen, and the alert is a warning line in Pi with the chime and a desktop notification. The log is in `~/.pi/agent/pomodoro-log.json`.
 
 ## Breaks
 
@@ -71,14 +71,14 @@ On Linux, on Windows, or over SSH, there's no system idle time to read, so it fa
 
 Under `/config`, or `pluginConfigs` in `settings.json`:
 
-| Setting        | Default | What it does                                                                       |
-| -------------- | ------- | ---------------------------------------------------------------------------------- |
-| `workMinutes`  | `25`    | Minutes of work before the alert                                                   |
-| `breakMinutes` | `5`     | Idle minutes that count as a break, and how often the alert repeats                |
-| `moveSeconds`  | `1`     | Seconds the mouse has to keep moving to count (macOS); `0` counts every movement   |
-| `sound`        | `true`  | Whether each alert plays a chime (macOS)                                           |
-| `checkIn`      | `true`  | Whether Claude stops to sum up at the alert; off leaves only the alert             |
-| `emoji`        | `true`  | Whether 🍅 marks the count and the alerts; off, the footer reads `pomodoro 12/25m` |
+| Setting        | Default | What it does                                                                                |
+| -------------- | ------- | ------------------------------------------------------------------------------------------- |
+| `workMinutes`  | `25`    | Minutes of work before the alert                                                            |
+| `breakMinutes` | `5`     | Idle minutes that count as a break, and how often the alert repeats                         |
+| `moveSeconds`  | `1`     | Seconds the mouse has to keep moving to count (macOS); `0` counts every movement            |
+| `sound`        | `true`  | Whether each alert plays a chime (macOS)                                                    |
+| `checkIn`      | `true`  | Whether Claude gets a note at the alert, to sum up if that helps; off leaves only the alert |
+| `emoji`        | `true`  | Whether 🍅 marks the count and the alerts; off, the footer reads `pomodoro 12/25m`          |
 
 In Pi, the same keys go in `~/.pi/agent/pomodoro-settings.json`, read when a session starts or on `/reload`. A key the file leaves out, or gives a value of the wrong kind, keeps its default:
 
