@@ -1,6 +1,6 @@
 {
 	"name": "@beautifoo/pi-pomodoro",
-	"version": "0.0.0",
+	"version": "0.1.0",
 	"description": "Pomodoro for Pi: a break when your 25 minutes are up, and a check-in where the agent sums up.",
 	"keywords": [
 		"pi-package"
