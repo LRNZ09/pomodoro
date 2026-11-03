@@ -42,6 +42,28 @@ jobs:
       - run: bun run test
       - run: bun run typecheck
 
+  # The Pi extension against the newest Pi; the plugin job checks the Pi it's built on. A Pi release can break it with
+  # no change here, and the extension swallows its own errors, so a break would only show as check-ins stopping.
+  pi:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - name: Use the newest Pi
+        # An exact version, since Bun keeps the lockfile's for a tag like latest.
+        run: |
+          v=$(npm view @earendil-works/pi-coding-agent version)
+          sed -i "s#\"@earendil-works/pi-coding-agent\": \"[0-9.]*\"#\"@earendil-works/pi-coding-agent\": \"$v\"#" packages/pi/package.json
+          bun install
+          echo "Pi $v"
+      - run: bun run build
+      - run: bunx tsc -p packages/pi
+      - run: bun scripts/pi-smoke.ts
+
   # Publishes each package whose version isn't on npm yet, through npm trusted publishing: no token.
   publish:
     needs: plugin

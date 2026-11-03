@@ -117,7 +117,7 @@ bun run test
 claude --plugin-dir packages/claude
 ```
 
-`bun run build` copies `lib/core/index.ts` to `packages/claude/hooks/core.ts` and `packages/pi/core.ts` (both ignored by git), since a Claude Code plugin can only import its own files: run it again after editing core. `bun run test` runs core's tests and the plugin's. The last command starts a session with the mod loaded from the folder; saving a file reloads it. Each load also writes the `claude-code` module's types for your Claude Code version into `packages/claude/.claude-plugin/types/` (ignored by git), which `packages/claude/tsconfig.json` points your editor and `tsc -p packages/claude` at, so run it once after cloning.
+`bun run build` copies `lib/core/index.ts` to `packages/claude/hooks/core.ts` and `packages/pi/core.ts` (both ignored by git), since a Claude Code plugin can only import its own files: run it again after editing core. `bun run test` runs core's tests, the plugin's, and a smoke test that runs Pi with the extension against a scripted model on localhost. The last command starts a session with the mod loaded from the folder; saving a file reloads it. Each load also writes the `claude-code` module's types for your Claude Code version into `packages/claude/.claude-plugin/types/` (ignored by git), which `packages/claude/tsconfig.json` points your editor and `tsc -p packages/claude` at, so run it once after cloning.
 
 For Pi, `pi -e ./packages/pi` starts a session with the extension loaded from the folder; remove the installed package first, or both run.
 
