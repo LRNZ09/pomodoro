@@ -183,18 +183,6 @@ export const register: Register = (on, options) => {
 			})
 			.catch(() => {})
 		if (e.isInteractive) await begin($, options)
-		// The eval (evals/) runs headless, where the clock never starts: EVAL_POMODORO_CHECK_IN_DUE=N makes one check-in
-		// due with the main loop's Nth tool result.
-		else
-			feed(
-				{
-					type: 'forceDue',
-					afterToolResults: Number(
-						await $.env.get('EVAL_POMODORO_CHECK_IN_DUE'),
-					),
-				},
-				options,
-			)
 		return next(e)
 	})
 

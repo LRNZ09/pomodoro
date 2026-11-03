@@ -8,8 +8,6 @@
 		"build": "bun run --filter '@beautifoo/*' build",
 		"bump": "changeset version && bun scripts/sync-plugin-version.ts && bun install",
 		"check": "biome check",
-		"eval": "bun run build && bun scripts/eval.ts",
-		"eval:pi": "bun run build && bun scripts/pi-eval.ts",
 		"fix": "biome check --write",
 		"test": "bun run build && bun test lib/core && claude plugin test packages/claude && bun scripts/pi-smoke.ts",
 		"typecheck": "bun run build && tsc -p packages/claude && tsc -p packages/pi && tsc -p ."

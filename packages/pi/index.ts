@@ -220,7 +220,7 @@ export default function (pi: ExtensionAPI) {
 			void tick().catch(() => {})
 			interval = setInterval(() => void tick().catch(() => {}), MINUTE)
 		}
-		// The eval (scripts/pi-eval.ts) runs where the clock never starts: EVAL_POMODORO_CHECK_IN_DUE=N makes one
+		// The smoke test (scripts/pi-smoke.ts) runs where the clock never starts: EVAL_POMODORO_CHECK_IN_DUE=N makes one
 		// check-in due with the agent's Nth tool result.
 		else
 			feed({
@@ -258,7 +258,7 @@ export default function (pi: ExtensionAPI) {
 			`${tomato(settings)}Pomodoro: asked the agent to pause and check in.`,
 			'info',
 		)
-		// The log and the menu need the terminal UI: the eval's check-ins stay out of the person's log.
+		// The log and the menu need the terminal UI: the smoke test's check-ins stay out of the person's log.
 		isCheckInRun = ctx.hasUI
 		awaitingAnswer = ctx.hasUI
 		// Replacing the content drops the structured content unless it comes back too.

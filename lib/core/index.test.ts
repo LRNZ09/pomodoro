@@ -115,7 +115,7 @@ test("a mouse jiggler's nudge doesn't count, a key counts at once, and a second 
 	expect(ended.state.lastInputThatCounts).toBeUndefined()
 })
 
-test('one check-in per work period, on a main-loop tool result, held back for git, and forced by the eval', () => {
+test('one check-in per work period, on a main-loop tool result, held back for git, and forced in a headless run', () => {
 	let state: State = ticks(26).state
 	const toolResult = (isMain = true) => {
 		const next = step(state, { type: 'toolResult', isMain }, SETTINGS)

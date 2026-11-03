@@ -26,8 +26,8 @@ export type Settings = Readonly<
 >
 
 // One session's own: its last prompt or tool call, the stretch of mouse movement under way, the last input that counts
-// (undefined: no watcher), the check-in now due, the last one sent, and the eval's main-loop tool results still to come
-// before its check-in is due (0: none to come).
+// (undefined: no watcher), the check-in now due, the last one sent, and a headless run's main-loop tool results still to
+// come before its forced check-in is due (0: none to come).
 export type State = {
 	lastActivity: number
 	stretch: { start: number; last: number }
@@ -48,7 +48,8 @@ export type Event =
 	| { type: 'toolResult'; isMain: boolean }
 	// The check-in a tool result was given goes back to waiting: git is partway through a rebase or the like.
 	| { type: 'checkInHeld'; key: number }
-	// The eval runs where the clock never starts: the check-in is due with the main loop's Nth tool result.
+	// A headless run (Pi's smoke test), where the clock never starts: the check-in is due with the main loop's Nth tool
+	// result.
 	| { type: 'forceDue'; afterToolResults: number }
 
 // In the order to carry them out.

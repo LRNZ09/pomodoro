@@ -2,16 +2,6 @@
 
 One rhythm for you and your agent on long sessions: every 25 minutes of work, you get told to take a break, and the agent pauses to tell you what it did, whether it has drifted from the goal, and what it would do next, then a menu asks whether to go on. It's a plugin for [Claude Code](https://code.claude.com) and an extension for [Pi](https://pi.dev).
 
-How Claude takes the check-in, from the evals in [`packages/claude/evals/`](packages/claude/evals/), 10 runs per model and case. In one, the check-in comes between steps that each stand on their own, and Claude should stop at once. In the other, it comes halfway through a transfer between two balances, and Claude should finish the transfer, then stop before the next task:
-
-| Model  | Paused between steps | Paused and checked in | Finished a transfer, then stopped | Finished and checked in |
-| ------ | -------------------- | --------------------- | --------------------------------- | ----------------------- |
-| Haiku  | 10/10                | 9/10                  | 4/10                              | 4/10                    |
-| Sonnet | 10/10                | 10/10                 | 10/10                             | 9/10                    |
-| Opus   | 10/10                | 9/10                  | 10/10                             | 10/10                   |
-
-Plugin 0.5.0, Claude Code 2.1.308, 2026-10-31. Checked in means the answer said in three lines at most what was done, whether it's still on the goal and what comes next, as the eval's judge graded it. Haiku sometimes takes the check-in for a note that didn't come from you and carries on, as it did in 6 of the 10 transfer runs.
-
 ## Install
 
 ### Claude Code
@@ -129,9 +119,7 @@ bun run fix
 bun run typecheck
 ```
 
-`bun run eval` runs the check-in evals (`packages/claude/evals/`) on Haiku, Sonnet and Opus with your login, which costs tokens, and prints the pass-rate table. In `check-in`, the check-in comes between steps that each stand on their own, and Claude should stop at once; in `check-in-atomic`, it comes halfway through a transfer between two balances, and Claude should finish the transfer, then stop before the next, separate task.
-
-To release, describe the change with `bunx changeset`, then run `bun run bump`: it bumps the version of each package the changesets name, writes their changelogs, and copies the plugin's version into `plugin.json`. Core isn't published on its own: it ships inside the plugin, so a change to it needs a changeset for the plugin. Before a release of the plugin, run `bun run eval` and update the table above with its numbers. Once that's pushed to `main` and the checks pass, CI publishes each new version to npm.
+To release, describe the change with `bunx changeset`, then run `bun run bump`: it bumps the version of each package the changesets name, writes their changelogs, and copies the plugin's version into `plugin.json`. Core isn't published on its own: it ships inside the plugin, so a change to it needs a changeset for the plugin. Once that's pushed to `main` and the checks pass, CI publishes each new version to npm.
 
 ## License
 
