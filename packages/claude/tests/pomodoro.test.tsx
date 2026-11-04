@@ -392,6 +392,20 @@ test(
 	},
 )
 
+// Claude Code's check takes it as unset, then hands it to the plugin.
+test(
+	'an empty setting takes its default',
+	{ options: { breakMinutes: '' } },
+	async ($, on) => {
+		const { clock, notified } = world(on, () => 0)
+		await start($)
+		await clock.advance(25 * MIN)
+		expect(notified).toEqual([
+			'25 minutes without a break. Stand up and look away from the screen for 5.',
+		])
+	},
+)
+
 test(
 	'without the emoji, the footer says pomodoro and nothing else shows a tomato',
 	{ options: { emoji: false } },

@@ -1,12 +1,16 @@
 import { expect, test } from 'bun:test'
+import plugin from '../../packages/claude/.claude-plugin/plugin.json'
 import {
 	type CheckIn,
+	DEFAULTS,
 	type Effect,
 	initial,
 	logged,
+	MINIMUM,
 	MINUTE,
 	type Settings,
 	type State,
+	settingsFrom,
 	step,
 	summary,
 	type Timer,
@@ -15,14 +19,52 @@ import {
 
 const T0 = 1_700_000_000_000
 const DAY = 24 * 60 * MINUTE
-const SETTINGS = {
-	workMinutes: 25,
-	breakMinutes: 5,
-	moveSeconds: 1,
-	sound: true,
-	checkIn: true,
-	emoji: true,
-}
+const SETTINGS = DEFAULTS
+
+// Claude Code checks its settings against plugin.json, and both agents go through settingsFrom, which must agree.
+test("plugin.json's defaults and minimums are settingsFrom's", () => {
+	const fields = Object.entries(plugin.userConfig)
+	expect(
+		Object.fromEntries(fields.map(([key, f]) => [key, f.default])),
+	).toEqual(DEFAULTS)
+	expect(
+		Object.fromEntries(
+			fields.flatMap(([key, f]) => ('min' in f ? [[key, f.min]] : [])),
+		),
+	).toEqual(MINIMUM)
+	expect(settingsFrom({})).toEqual(DEFAULTS)
+	for (const [key, field] of fields)
+		if ('min' in field) {
+			expect(settingsFrom({ [key]: field.min })).toEqual({
+				...DEFAULTS,
+				[key]: field.min,
+			})
+			expect(settingsFrom({ [key]: field.min - 0.5 })).toEqual({
+				problems: [`${key} must be at least ${field.min}`],
+			})
+		}
+})
+
+test('settingsFrom names every value of the wrong kind, takes an empty one as left out, and ignores keys it has no use for', () => {
+	expect(
+		settingsFrom({ workMinutes: '50', sound: 1, breakMinutes: 10 }),
+	).toEqual({
+		problems: ['workMinutes must be a number', 'sound must be a boolean'],
+	})
+	// JSON's 1e999.
+	expect(settingsFrom({ breakMinutes: Infinity })).toEqual({
+		problems: ['breakMinutes must be a number'],
+	})
+	for (const json of [[], null, 25])
+		expect(settingsFrom(json)).toEqual({
+			problems: ['the file must hold a JSON object'],
+		})
+	expect(settingsFrom({ breakMinutes: '', sound: '' })).toEqual(DEFAULTS)
+	expect(settingsFrom({ breakMinutes: 10, theme: 'dark' })).toEqual({
+		...DEFAULTS,
+		breakMinutes: 10,
+	})
+})
 
 // A tick each minute up to `minutes`, with the stored timer carried over as an agent does, and the system's idle time
 // at each minute; the state at the end, and each minute's effects.

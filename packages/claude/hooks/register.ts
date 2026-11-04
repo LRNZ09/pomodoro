@@ -1,10 +1,12 @@
-import type { EngineInterface, PluginOptions, Register } from 'claude-code'
+import type { EngineInterface, Register } from 'claude-code'
 import {
 	type CheckIn,
 	type Event,
 	initial,
 	logged,
 	MINUTE,
+	type Settings,
+	settingsFrom,
 	step,
 	summary,
 	type Timer,
@@ -25,15 +27,15 @@ let isStarted = false
 let awaitingSummary = false
 
 // Moves the rhythm on by one event, and returns what to carry out, in order.
-function feed(event: Event, options: PluginOptions) {
-	const next = step(state, event, options)
+function feed(event: Event, settings: Settings) {
+	const next = step(state, event, settings)
 	state = next.state
 	return next.effects
 }
 
 // Leaving the loop, or the module unloading, ends the child.
 // ponytail: one watcher per open session; share one through $.store if many sessions matter
-async function watch($: EngineInterface, options: PluginOptions) {
+async function watch($: EngineInterface, settings: Settings) {
 	try {
 		const watcher = $.process.spawn({
 			argv: ['osascript', '-l', 'JavaScript', '-e', WATCHER],
@@ -42,9 +44,9 @@ async function watch($: EngineInterface, options: PluginOptions) {
 		for await (const { stream, text } of watcher)
 			if (stream === 'stdout')
 				for (const line of text.split('\n'))
-					feed({ type: 'input', line }, options)
+					feed({ type: 'input', line }, settings)
 	} catch {}
-	feed({ type: 'watcherEnded' }, options)
+	feed({ type: 'watcherEnded' }, settings)
 }
 
 // macOS input idle time, unless over SSH, where ioreg sees the console's input (undefined: none to read).
@@ -102,7 +104,7 @@ function show($: EngineInterface, label: string, warning?: string) {
 	$.ui.status(warning)
 }
 
-async function tick($: EngineInterface, options: PluginOptions) {
+async function tick($: EngineInterface, settings: Settings) {
 	const now = await $.clock.now()
 	const timer = ((await $.store.get('timer')) ?? {}) as Timer
 	// ioreg only when the watcher isn't there to go by.
@@ -110,10 +112,13 @@ async function tick($: EngineInterface, options: PluginOptions) {
 		state.lastInputThatCounts === undefined ? await systemIdleMs($) : undefined
 	for (const effect of feed(
 		{ type: 'tick', now, timer, systemIdleMs: idleMs },
-		options,
+		settings,
 	))
 		if (effect.type === 'wake')
-			$.clock.after(effect.afterMs, () => void tick($, options).catch(() => {}))
+			$.clock.after(
+				effect.afterMs,
+				() => void tick($, settings).catch(() => {}),
+			)
 		// ponytail: read-then-write, so two sessions ticking in the same instant can both alert
 		else if (effect.type === 'persist') await $.store.set('timer', effect.timer)
 		else if (effect.type === 'show') show($, effect.label, effect.warning)
@@ -130,7 +135,7 @@ async function logSummary($: EngineInterface, text: string) {
 }
 
 // The clock runs where the count shows: an interactive terminal session. Never in -p, VS Code or the desktop app.
-async function begin($: EngineInterface, options: PluginOptions) {
+async function begin($: EngineInterface, settings: Settings) {
 	if (isStarted) return
 	isStarted = true
 	// Read before the first tick, which is what makes a check due.
@@ -140,13 +145,18 @@ async function begin($: EngineInterface, options: PluginOptions) {
 	)
 	state = { ...state, sentKey }
 	// Like ioreg, the watcher sees the console's input, not the input of an SSH session.
-	if (!(await $.env.get('SSH_CONNECTION'))) void watch($, options)
+	if (!(await $.env.get('SSH_CONNECTION'))) void watch($, settings)
 	// A failed tick is retried by the next one.
-	void tick($, options).catch(() => {})
-	$.clock.every(MINUTE, () => void tick($, options).catch(() => {}))
+	void tick($, settings).catch(() => {})
+	$.clock.every(MINUTE, () => void tick($, settings).catch(() => {}))
 }
 
 export const register: Register = (on, options) => {
+	// Claude Code has checked them against plugin.json, but hands an empty one on. A problem left fails the load, as its
+	// own check does.
+	const read = settingsFrom(options)
+	if ('problems' in read) throw new Error(read.problems.join('; '))
+	const settings = read
 	on('session.start', async ($, e, next) => {
 		await $.command
 			.register({
@@ -155,7 +165,7 @@ export const register: Register = (on, options) => {
 				argumentHint: 'today',
 			})
 			.catch(() => {})
-		if (e.isInteractive) await begin($, options)
+		if (e.isInteractive) await begin($, settings)
 		return next(e)
 	})
 
@@ -170,18 +180,18 @@ export const register: Register = (on, options) => {
 	})
 
 	on('prompt.submit', async ($, e, next) => {
-		feed({ type: 'activity', now: await $.clock.now() }, options)
+		feed({ type: 'activity', now: await $.clock.now() }, settings)
 		return next(e)
 	})
 
 	// The check rides a tool result of the main loop: Claude reads it mid-turn, and it never waits in an idle session.
 	on('tool.call', async ($, e, next) => {
-		feed({ type: 'activity', now: await $.clock.now() }, options)
+		feed({ type: 'activity', now: await $.clock.now() }, settings)
 		const ran = await next(e)
 		if (ran.deny !== undefined) return ran
 		const [checkIn] = feed(
 			{ type: 'toolResult', isMain: e.agentId === undefined },
-			options,
+			settings,
 		)
 		if (checkIn?.type !== 'checkIn') return ran
 		awaitingSummary = true
@@ -193,7 +203,7 @@ export const register: Register = (on, options) => {
 					content: [
 						{
 							type: 'text',
-							text: `${tomato(options)}Pomodoro: told Claude your work block is up.`,
+							text: `${tomato(settings)}Pomodoro: told Claude your work block is up.`,
 						},
 					],
 				},

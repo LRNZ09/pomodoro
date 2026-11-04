@@ -10,20 +10,47 @@ export type Timer = {
 }
 // The agent's summary at a check-in, kept for /pomodoro today.
 export type CheckIn = { at: number; repo: string | null; text: string }
-// The plugin's settings as the agent stores them, read the way each one needs: Number(), `=== true`, or truthy.
-export type Settings = Readonly<
-	Partial<
-		Record<
-			| 'workMinutes'
-			| 'breakMinutes'
-			| 'moveSeconds'
-			| 'sound'
-			| 'checkIn'
-			| 'emoji',
-			unknown
-		>
-	>
->
+// The Claude plugin's plugin.json declares the same defaults and minimums.
+export const DEFAULTS = {
+	workMinutes: 25,
+	breakMinutes: 5,
+	moveSeconds: 1,
+	sound: true,
+	checkIn: true,
+	emoji: true,
+}
+export type Settings = Readonly<typeof DEFAULTS>
+export const MINIMUM: Partial<Record<keyof Settings, number>> = {
+	workMinutes: 1,
+	breakMinutes: 1,
+	moveSeconds: 0,
+}
+
+// The settings in a file's JSON or Claude Code's options, with the defaults for the keys left out or empty; or what's
+// wrong with them, as Claude Code checks a plugin's options: then neither agent runs the timer.
+export function settingsFrom(json: unknown): Settings | { problems: string[] } {
+	if (typeof json !== 'object' || json === null || Array.isArray(json))
+		return { problems: ['the file must hold a JSON object'] }
+	const file = json as Record<string, unknown>
+	const settings: Record<string, unknown> = { ...DEFAULTS }
+	const problems: string[] = []
+	for (const key of Object.keys(DEFAULTS) as (keyof Settings)[]) {
+		const value = file[key]
+		const min = MINIMUM[key]
+		// Claude Code's check skips an empty value, then hands it on.
+		if (value === undefined || value === '') continue
+		// JSON's 1e999 is Infinity, which Claude Code refuses.
+		if (
+			typeof value !== typeof DEFAULTS[key] ||
+			(typeof value === 'number' && !Number.isFinite(value))
+		)
+			problems.push(`${key} must be a ${typeof DEFAULTS[key]}`)
+		else if (min !== undefined && (value as number) < min)
+			problems.push(`${key} must be at least ${min}`)
+		else settings[key] = value
+	}
+	return problems.length > 0 ? { problems } : (settings as Settings)
+}
 
 // One session's own: its last prompt or tool call, the stretch of mouse movement under way, the last input that counts
 // (undefined: no watcher), the check-in now due, the last one sent, and a headless run's main-loop tool results still to
@@ -98,7 +125,7 @@ const check = (minutes: number) =>
 
 // 🍅 before a line, unless the setting turns it off; `word` stands in where the line needs a name to make sense.
 export const tomato = (settings: Settings, word = '') =>
-	settings.emoji === true ? '🍅 ' : word
+	settings.emoji ? '🍅 ' : word
 
 export function step(
 	state: State,
@@ -110,11 +137,7 @@ export function step(
 			return { state: { ...state, lastActivity: event.now }, effects: [] }
 		case 'input':
 			return {
-				state: sawInput(
-					state,
-					event.line,
-					Number(settings.moveSeconds) * 1_000,
-				),
+				state: sawInput(state, event.line, settings.moveSeconds * 1_000),
 				effects: [],
 			}
 		// It ended or never started: the system's idle time stands in, where every input counts.
@@ -169,8 +192,8 @@ function tick(
 	{ now, timer, systemIdleMs }: Extract<Event, { type: 'tick' }>,
 	settings: Settings,
 ): { state: State; effects: Effect[] } {
-	const workMs = Number(settings.workMinutes) * MINUTE
-	const breakMs = Math.max(1, Number(settings.breakMinutes)) * MINUTE
+	const workMs = settings.workMinutes * MINUTE
+	const breakMs = settings.breakMinutes * MINUTE
 	// Time since input that counts, from the watcher; else the system's input idle time; else time since this session's
 	// last activity.
 	const idleMs =
@@ -233,7 +256,7 @@ function tick(
 			type: 'alert',
 			text: `${minutes} minutes without a break. Stand up and look away from the screen for ${breakMs / MINUTE}.`,
 			mark: tomato(settings),
-			sound: settings.sound === true,
+			sound: settings.sound,
 		})
 	// One check per work period without a break, keyed by when that period ended.
 	const due =
@@ -256,7 +279,7 @@ function toolResult(
 	if (!isMain) return { state, effects: [] }
 	const due =
 		state.evalCheckInIn === 1
-			? { key: 0, text: check(Number(settings.workMinutes)) }
+			? { key: 0, text: check(settings.workMinutes) }
 			: state.due
 	const counted = {
 		...state,

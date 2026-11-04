@@ -21,4 +21,6 @@ Settings go in `~/.pi/agent/pomodoro-settings.json`, read when a session starts 
 }
 ```
 
+A key the file leaves out, or leaves empty, keeps its default. `workMinutes` and `breakMinutes` take 1 or more, `moveSeconds` 0 or more: a value of the wrong kind or below that keeps the timer off, with an error that names it.
+
 The [repository](https://github.com/LRNZ09/pomodoro) has the details, and the same plugin for Claude Code. MIT licensed. Pomodoro Technique® is a registered trademark of Francesco Cirillo; this package isn't affiliated with it.

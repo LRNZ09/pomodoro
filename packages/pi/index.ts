@@ -9,10 +9,13 @@ import {
 } from '@earendil-works/pi-coding-agent'
 import {
 	type CheckIn,
+	DEFAULTS,
 	type Event,
 	initial,
 	logged,
 	MINUTE,
+	type Settings,
+	settingsFrom,
 	step,
 	summary,
 	type Timer,
@@ -20,17 +23,6 @@ import {
 	tomato,
 	WATCHER,
 } from './core'
-
-// The Claude plugin's defaults (its plugin.json).
-const DEFAULTS = {
-	workMinutes: 25,
-	breakMinutes: 5,
-	moveSeconds: 1,
-	sound: true,
-	checkIn: true,
-	emoji: true,
-}
-type Settings = typeof DEFAULTS
 
 // A file's JSON, or undefined when it's missing or unreadable.
 const load = (path: string): Promise<unknown> =>
@@ -44,21 +36,15 @@ async function save(path: string, value: unknown) {
 	await rename(`${path}.${process.pid}`, path)
 }
 
-// Each setting the file holds with the default's type, a number above 0 (moveSeconds may be 0); else the default.
-async function loadSettings(path: string): Promise<Settings> {
-	const file = (await load(path)) as Record<string, unknown> | undefined
-	const settings = { ...DEFAULTS }
-	for (const key of Object.keys(DEFAULTS) as (keyof Settings)[]) {
-		const value = file?.[key]
-		if (
-			typeof value === typeof DEFAULTS[key] &&
-			(typeof value !== 'number' ||
-				value > 0 ||
-				(key === 'moveSeconds' && value === 0))
-		)
-			Object.assign(settings, { [key]: value })
+// The file's settings, the defaults without one, or what's wrong with it.
+async function readSettings(path: string) {
+	const text = await readFile(path, 'utf8').catch(() => undefined)
+	if (text === undefined) return DEFAULTS
+	try {
+		return settingsFrom(JSON.parse(text))
+	} catch {
+		return { problems: ["the file isn't valid JSON"] }
 	}
-	return settings
 }
 
 // Pi caches this factory per path, so everything lives in its closure, set again at each session start.
@@ -69,7 +55,7 @@ export default function (pi: ExtensionAPI) {
 	const logPath = join(dir, 'pomodoro-log.json')
 	const settingsPath = join(dir, 'pomodoro-settings.json')
 
-	let settings = DEFAULTS
+	let settings: Settings = DEFAULTS
 	let state = initial
 	// While a terminal session runs: its UI, the input watcher, the minute's tick, and the tick at a break's start.
 	let ui: ExtensionUIContext | undefined
@@ -169,8 +155,17 @@ export default function (pi: ExtensionAPI) {
 	}
 
 	pi.on('session_start', async (_, ctx) => {
-		settings = await loadSettings(settingsPath)
+		const read = await readSettings(settingsPath)
 		state = initial
+		// No timer, as in Claude Code with a setting that doesn't fit; Claude Code says why only in its debug log.
+		if ('problems' in read) {
+			ctx.ui.notify(
+				`Pomodoro is off: ${read.problems.join('; ')} (${settingsPath}).`,
+				'error',
+			)
+			return
+		}
+		settings = read
 		// The clock runs where the count shows: the terminal UI. Never with -p, --mode json or RPC.
 		if (ctx.mode === 'tui') {
 			ui = ctx.ui
