@@ -1,6 +1,6 @@
 {
 	"name": "pomodoro",
-	"description": "One rhythm for you and Claude Code: a break when your 25 minutes are up, and a note that lets Claude sum up the session if that helps.",
+	"description": "Pomodoro for Claude Code and Pi: a break reminder every 25 minutes of work, and a summary from the agent when it helps.",
 	"owner": { "name": "Lorenzo Pieri" },
 	"plugins": [
 		{
