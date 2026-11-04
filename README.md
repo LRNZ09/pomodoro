@@ -80,6 +80,8 @@ Under `/config`, or `pluginConfigs` in `settings.json`:
 | `checkIn`      | `true`  | Whether Claude gets a note at the alert, to sum up if that helps; off leaves only the alert |
 | `emoji`        | `true`  | Whether 🍅 marks the count and the alerts; off, the footer reads `pomodoro 12/25m`          |
 
+`workMinutes` and `breakMinutes` take 1 or more, `moveSeconds` 0 or more. `/config` refuses less. A value below that already in `settings.json` stops the plugin from loading, and nothing on screen says so: Claude Code names the setting only in its debug log (`claude --debug`).
+
 In Pi, the same keys go in `~/.pi/agent/pomodoro-settings.json`, read when a session starts or on `/reload`. A key the file leaves out, or gives a value of the wrong kind, keeps its default:
 
 ```json

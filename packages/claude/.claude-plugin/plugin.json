@@ -9,19 +9,22 @@
 			"type": "number",
 			"title": "Work block (minutes)",
 			"description": "Minutes of work before the break alert.",
-			"default": 25
+			"default": 25,
+			"min": 1
 		},
 		"breakMinutes": {
 			"type": "number",
 			"title": "Break (minutes)",
 			"description": "Minutes with no keyboard or mouse input that count as a break. The alert also repeats this often until you take one.",
-			"default": 5
+			"default": 5,
+			"min": 1
 		},
 		"moveSeconds": {
 			"type": "number",
 			"title": "Mouse movement that counts (seconds)",
 			"description": "Seconds the mouse has to keep moving to count as you being there (macOS). Anything shorter, like the nudge a keep-awake app's mouse jiggler gives every minute, neither holds off a break nor ends one. Keys, clicks and scrolls always count. 0 counts every movement.",
-			"default": 1
+			"default": 1,
+			"min": 0
 		},
 		"sound": {
 			"type": "boolean",

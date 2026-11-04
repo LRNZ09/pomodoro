@@ -380,6 +380,18 @@ test(
 	},
 )
 
+// Claude Code refuses it in /config too. A block of 0 would put the check-in on every tool result.
+test(
+	'a setting below its minimum fails the load, naming the setting',
+	{ options: { workMinutes: 0 } },
+	async ($, on) => {
+		world(on, () => 0)
+		await expect(start($)).rejects.toThrow(
+			'Work block (minutes) must be at least 1',
+		)
+	},
+)
+
 test(
 	'without the emoji, the footer says pomodoro and nothing else shows a tomato',
 	{ options: { emoji: false } },
