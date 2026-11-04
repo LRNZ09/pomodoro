@@ -1,6 +1,6 @@
 # Pomodoro for Pi
 
-One rhythm for you and your agent on long sessions: every 25 minutes of work, you get told to take a break, and the agent is told too, so it can sum up the session so far if that would help you.
+After every 25 minutes of work, you get a reminder to take a break, and your agent gets a note so it can sum up the session if that helps.
 
 ```
 pi install npm:@beautifoo/pi-pomodoro

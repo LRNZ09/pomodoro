@@ -1,6 +1,6 @@
 # Pomodoro for Claude Code and Pi
 
-One rhythm for you and your agent on long sessions: every 25 minutes of work, you get told to take a break, and the agent is told too, so it can sum up the session so far if that would help you. It's a plugin for [Claude Code](https://code.claude.com) and an extension for [Pi](https://pi.dev).
+After every 25 minutes of work, you get a reminder to take a break, and your agent gets a note so it can sum up the session if that helps. It's a plugin for [Claude Code](https://code.claude.com) and an extension for [Pi](https://pi.dev).
 
 ## Install
 
