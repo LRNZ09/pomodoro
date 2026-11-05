@@ -385,6 +385,21 @@ test(
 	},
 )
 
+// With 1-minute breaks every tick asks for a wake. With input half a second before each tick, the next minute's tick
+// comes before that wake and replaces it, so only the minute's ticks run.
+test(
+	"a wake replaces the one before: with 1-minute breaks the ticks don't pile up while the person works",
+	{ options: { breakMinutes: 1 } },
+	async ($, on) => {
+		const { clock, labels } = world(on, () => 500)
+		await start($)
+		await clock.settle()
+		const before = labels.length
+		await clock.advance(10 * MIN)
+		expect(labels.length - before).toBe(10)
+	},
+)
+
 // Claude Code refuses it in /config too. A block of 0 would put the check-in on every tool result.
 test(
 	'a setting below its minimum fails the load, naming the setting',

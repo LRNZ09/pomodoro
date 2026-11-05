@@ -27,6 +27,7 @@ const LABEL = { plugin: 'pomodoro', key: 'label' } as const
 // ponytail: a reload before the turn ends loses the wait for the summary; keep it in $.state if that matters
 let state = initial
 let isStarted = false
+let wake: { cancel: () => void } | undefined
 
 // Moves the rhythm on by one event, and returns what to carry out, in order.
 function feed(event: Event, settings: Settings) {
@@ -99,15 +100,18 @@ async function tick($: EngineInterface, settings: Settings) {
 	// ioreg only when the watcher isn't there to go by.
 	const idleMs =
 		state.lastInputThatCounts === undefined ? await systemIdleMs($) : undefined
+	// Each wake aims at the moment the stretch without input becomes a break, so the newest replaces the last.
 	for (const effect of feed(
 		{ type: 'tick', now, timer, systemIdleMs: idleMs },
 		settings,
 	))
-		if (effect.type === 'wake')
-			$.clock.after(
+		if (effect.type === 'wake') {
+			wake?.cancel()
+			wake = $.clock.after(
 				effect.afterMs,
 				() => void tick($, settings).catch(() => {}),
 			)
+		}
 		// ponytail: read-then-write, so two sessions ticking in the same instant can both alert
 		else if (effect.type === 'persist') await $.store.set('timer', effect.timer)
 		else if (effect.type === 'show') show($, effect.label, effect.warning)
