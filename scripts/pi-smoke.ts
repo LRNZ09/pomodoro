@@ -1,15 +1,40 @@
-// Runs Pi with the extension against a scripted model on localhost, on a stored timer whose block is up. Fails unless
-// Pi's tick makes the check-in due without an alert, the check-in rides the first tool result and reaches the model,
-// once, and the summary the model then gives is logged; and unless nothing ticks with a settings file that doesn't
-// fit. No login, so CI runs it against each Pi it checks.
+// Runs Pi with the extension against a scripted model on localhost, on a stored timer whose block is up, with stand-ins
+// for the macOS commands its tick runs. Fails unless that tick, before the first prompt, makes the check-in due and
+// alerts through those commands, the check-in rides the first tool result and reaches the model, once, and the summary
+// the model then gives is logged; unless nothing ticks with a settings file that doesn't fit; and on an extension
+// error. No login, so CI runs it against each Pi it checks.
 // Usage: bun scripts/pi-smoke.ts (after bun run build)
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { type CheckIn, DEFAULTS, MINUTE, type Timer } from '../lib/core'
+import {
+	banner,
+	CHIME,
+	type CheckIn,
+	DEFAULTS,
+	IOREG,
+	MINUTE,
+	type Timer,
+} from '../lib/core'
 
 const pi = resolve('packages/pi/node_modules/@earendil-works/pi-coding-agent')
 const { version, bin } = await Bun.file(`${pi}/package.json`).json()
+
+// Stand-ins for ioreg, afplay and osascript, first on Pi's PATH: each records its arguments, and ioreg takes a second,
+// as the real one can, then reports no idle time. So every machine runs the same test, a tick Pi doesn't wait for
+// loses the race to the first tool result, and nothing shows or plays.
+const fakes = await mkdtemp(join(tmpdir(), 'pi-smoke-fakes-'))
+for (const name of ['ioreg', 'afplay', 'osascript'])
+	await writeFile(
+		join(fakes, name),
+		`#!/usr/bin/env node
+require('node:fs').appendFileSync(process.env.POMODORO_SMOKE_CALLS, JSON.stringify(['${name}', ...process.argv.slice(2)]) + '\\n')
+if ('${name}' === 'ioreg') setTimeout(() => console.log('"HIDIdleTime" = 0'), 1_000)
+`,
+		{ mode: 0o755 },
+	)
+// Over SSH the tick wouldn't run ioreg.
+const { SSH_CONNECTION: _, ...env } = process.env
 
 // The model writes a.txt, then b.txt, then answers with a summary, by how many tool results it has been sent.
 const replies = [
@@ -69,20 +94,20 @@ const server = Bun.serve({
 })
 
 // One run of Pi in a new agent dir, with its settings file made by `settings`; what `seen` held, whether Pi's tick
-// stored the timer and whether it alerted, the summaries logged, and Pi's stderr.
+// stored the timer and whether it alerted, the summaries logged, the stand-ins' calls, whether an extension threw, and
+// Pi's stderr.
 async function run(settings?: (path: string) => Promise<unknown>) {
 	seen = []
 	const agentDir = await mkdtemp(join(tmpdir(), 'pi-smoke-agent-'))
 	const workDir = await mkdtemp(join(tmpdir(), 'pi-smoke-work-'))
-	// A block just up, its alert given, and input just now (whatever ioreg says): a tick makes the check-in due, and
-	// alerts or wakes for nothing.
+	// A block just up, with no alert yet: a tick makes the check-in due, and alerts.
 	const now = Date.now()
 	const seeded: Timer = {
 		blockStart: now - DEFAULTS.workMinutes * MINUTE,
 		seenAt: now,
-		alertedAt: now,
-		lastInput: now,
+		alertedAt: 0,
 	}
+	const calls = join(agentDir, 'calls')
 	await writeFile(join(agentDir, 'pomodoro.json'), JSON.stringify(seeded))
 	await settings?.(join(agentDir, 'pomodoro-settings.json'))
 	await writeFile(
@@ -125,9 +150,11 @@ async function run(settings?: (path: string) => Promise<unknown>) {
 		{
 			cwd: workDir,
 			env: {
-				...process.env,
+				...env,
+				PATH: `${fakes}:${process.env.PATH}`,
 				PI_CODING_AGENT_DIR: agentDir,
 				EVAL_POMODORO_TICK: '1',
+				POMODORO_SMOKE_CALLS: calls,
 			},
 			stdout: 'ignore',
 			stderr: 'pipe',
@@ -144,6 +171,14 @@ async function run(settings?: (path: string) => Promise<unknown>) {
 		join(agentDir, 'pomodoro-log.json'),
 		'utf8',
 	).then(JSON.parse, () => [])
+	const called: string[][] = await readFile(calls, 'utf8').then(
+		(text) =>
+			text
+				.split('\n')
+				.filter(Boolean)
+				.map((line) => JSON.parse(line)),
+		() => [],
+	)
 	await rm(agentDir, { recursive: true, force: true })
 	await rm(workDir, { recursive: true, force: true })
 	return {
@@ -151,23 +186,35 @@ async function run(settings?: (path: string) => Promise<unknown>) {
 		ticked: timer.seenAt !== seeded.seenAt,
 		alerted: timer.alertedAt !== seeded.alertedAt,
 		logged: log.map((c) => c.text),
+		calls: called,
+		crashed: stderr.includes('Extension error'),
 		stderr,
 	}
 }
 
 // A settings file holding `text`.
 const file = (text: string) => (path: string) => writeFile(path, text)
-const off = { seen: [false, false], ticked: false, alerted: false, logged: [] }
+const alert = `${DEFAULTS.workMinutes} minutes without a break. Stand up and look away from the screen for ${DEFAULTS.breakMinutes}.`
+const off = {
+	seen: [false, false],
+	ticked: false,
+	alerted: false,
+	logged: [],
+	calls: [],
+	crashed: false,
+}
 for (const [settings, expected, what] of [
 	[
 		undefined,
 		{
 			seen: [true, false],
 			ticked: true,
-			alerted: false,
+			alerted: true,
 			logged: ['Pomodoro: wrote a.txt and b.txt.'],
+			calls: [IOREG, CHIME, banner(alert)],
+			crashed: false,
 		},
-		'came due with a tick, rode the first tool result, reached the model once, and its summary was logged',
+		'came due with a tick that alerted, rode the first tool result, reached the model once, and its summary was logged',
 	],
 	[file('{ "workMinutes": 0 }'), off, 'stayed off with workMinutes 0'],
 	[file('{ "workMinutes": 50'), off, 'stayed off with a broken file'],
@@ -182,8 +229,10 @@ for (const [settings, expected, what] of [
 		console.error(
 			`Pi ${version} (${what}): ${JSON.stringify(got)}, not ${JSON.stringify(expected)}.\n${stderr}`,
 		)
+		await rm(fakes, { recursive: true, force: true })
 		process.exit(1)
 	}
 	console.log(`Pi ${version}: the check-in ${what}.`)
 }
+await rm(fakes, { recursive: true, force: true })
 server.stop(true)
