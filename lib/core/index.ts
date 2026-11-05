@@ -102,10 +102,15 @@ export const initial: State = {
 	awaitingSummary: false,
 }
 
-// A macOS JXA script, run with `osascript -l JavaScript -e`. Prints the time of the latest input each time it changes
-// (macOS HID idle time, 4 times a second), and with a `k` before it the time of the latest key, click or scroll: a
-// mouse jiggler only moves the pointer.
-export const WATCHER = `ObjC.import('CoreGraphics')
+// The command that runs a macOS JXA script, which prints the time of the latest input each time it changes (macOS HID
+// idle time, 4 times a second), and with a `k` before it the time of the latest key, click or scroll: a mouse jiggler
+// only moves the pointer.
+export const WATCHER = [
+	'osascript',
+	'-l',
+	'JavaScript',
+	'-e',
+	`ObjC.import('CoreGraphics')
 const out = $.NSFileHandle.fileHandleWithStandardOutput
 const latest = (...types) => Math.round(Date.now() - 1e3 * Math.min(...types.map((t) => $.CGEventSourceSecondsSinceLastEventType(1, t))))
 const print = (line) => out.writeData($(line + '\\n').dataUsingEncoding($.NSUTF8StringEncoding))
@@ -117,7 +122,33 @@ for (;;) {
 	if (any - lastAny > 50) print(lastAny = any)
 	if (key - lastKey > 50) print('k' + (lastKey = key))
 	delay(0.25)
-}`
+}`,
+]
+
+// The command that prints macOS's input idle time, and that time in its output (undefined: none, as off macOS).
+export const IOREG = ['ioreg', '-r', '-c', 'IOHIDSystem', '-d', '1']
+export function ioregIdleMs(stdout: string) {
+	const ns = stdout.match(/"HIDIdleTime" = (\d+)/)?.[1]
+	return ns === undefined ? undefined : Number(ns) / 1e6
+}
+
+// An alert's chime, and the banner osascript posts (macOS); the text's quotes and backslashes stay text in AppleScript.
+export const CHIME = ['afplay', '/System/Library/Sounds/Glass.aiff']
+export const banner = (text: string) => [
+	'osascript',
+	'-e',
+	`display notification "${text.replace(/["\\]/g, '\\$&')}" with title "Pomodoro"`,
+]
+
+// /pomodoro, and what it prints for `args`.
+export const COMMAND = {
+	name: 'pomodoro',
+	description: "Lists today's check-ins by repository.",
+}
+export const command = (args: string, log: CheckIn[], now: number) =>
+	['', 'today'].includes(args.trim())
+		? today(log, now)
+		: 'Usage: /pomodoro [today]'
 
 // Whether to sum up, and when, is the agent's call: nothing stops it or asks the person anything.
 const check = (minutes: number) =>

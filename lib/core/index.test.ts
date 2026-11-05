@@ -1,11 +1,14 @@
 import { expect, test } from 'bun:test'
 import plugin from '../../packages/claude/.claude-plugin/plugin.json'
 import {
+	banner,
 	type CheckIn,
+	command,
 	DEFAULTS,
 	type Effect,
 	type Event,
 	initial,
+	ioregIdleMs,
 	logged,
 	MINIMUM,
 	MINUTE,
@@ -237,4 +240,18 @@ test("the log drops entries 14 days old and cuts long answers, and today lists o
 	).toMatch(
 		/^app\n {2}\d\d:\d\d {2}x{4000}\n\nno repository\n {2}\d\d:\d\d {2}Line one\.\n {9}Line two\.$/,
 	)
+})
+
+test("ioreg's idle time, the banner's AppleScript, and what /pomodoro prints", () => {
+	expect(ioregIdleMs('    |   "HIDIdleTime" = 1500000000\n')).toBe(1_500)
+	expect(ioregIdleMs('')).toBeUndefined()
+	// Quotes and backslashes in the text stay text.
+	expect(banner('Say "hi" \\o/')).toEqual([
+		'osascript',
+		'-e',
+		'display notification "Say \\"hi\\" \\\\o/" with title "Pomodoro"',
+	])
+	for (const args of ['', ' today '])
+		expect(command(args, [], T0)).toBe('No check-ins today.')
+	expect(command('yesterday', [], T0)).toBe('Usage: /pomodoro [today]')
 })

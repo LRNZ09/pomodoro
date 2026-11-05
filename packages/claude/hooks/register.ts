@@ -1,15 +1,20 @@
 import type { EngineInterface, Register } from 'claude-code'
 import {
+	banner,
+	CHIME,
 	type CheckIn,
+	COMMAND,
+	command,
 	type Event,
+	IOREG,
 	initial,
+	ioregIdleMs,
 	logged,
 	MINUTE,
 	type Settings,
 	settingsFrom,
 	step,
 	type Timer,
-	today,
 	tomato,
 	WATCHER,
 } from './core'
@@ -35,7 +40,7 @@ function feed(event: Event, settings: Settings) {
 async function watch($: EngineInterface, settings: Settings) {
 	try {
 		const watcher = $.process.spawn({
-			argv: ['osascript', '-l', 'JavaScript', '-e', WATCHER],
+			argv: WATCHER,
 			cwd: '/',
 		})
 		for await (const { stream, text } of watcher)
@@ -50,12 +55,11 @@ async function watch($: EngineInterface, settings: Settings) {
 async function systemIdleMs($: EngineInterface) {
 	if (await $.env.get('SSH_CONNECTION')) return undefined
 	try {
-		const { stdout } = await $.process.run(
-			['ioreg', '-r', '-c', 'IOHIDSystem', '-d', '1'],
-			{ cwd: '/', timeoutMs: 5_000 },
-		)
-		const ns = stdout.match(/"HIDIdleTime" = (\d+)/)?.[1]
-		return ns === undefined ? undefined : Number(ns) / 1e6
+		const { stdout } = await $.process.run(IOREG, {
+			cwd: '/',
+			timeoutMs: 5_000,
+		})
+		return ioregIdleMs(stdout)
 	} catch {
 		return undefined
 	}
@@ -69,10 +73,7 @@ async function alert(
 ) {
 	$.ui.toast(`${mark}${text}`, { timeoutMs: 15_000 })
 	// Ghostty shows the banner of the tab in front for a few seconds only, and a Focus silences it; not a chime (macOS).
-	if (hasSound)
-		await $.process
-			.run(['afplay', '/System/Library/Sounds/Glass.aiff'], { cwd: '/' })
-			.catch(() => {})
+	if (hasSound) await $.process.run(CHIME, { cwd: '/' }).catch(() => {})
 	// osascript only where the terminal can't raise one; notifications turned off stay off (macOS).
 	const sent = await $.ui
 		.notify(text, { title: 'Pomodoro' })
@@ -82,16 +83,7 @@ async function alert(
 		(!sent.isSent &&
 			(sent.reason === 'no-channel' || sent.reason === 'no-surface'))
 	) {
-		await $.process
-			.run(
-				[
-					'osascript',
-					'-e',
-					`display notification "${text}" with title "Pomodoro"`,
-				],
-				{ cwd: '/' },
-			)
-			.catch(() => {})
+		await $.process.run(banner(text), { cwd: '/' }).catch(() => {})
 	}
 }
 
@@ -156,11 +148,7 @@ export const register: Register = (on, options) => {
 	const settings = read
 	on('session.start', async ($, e, next) => {
 		await $.command
-			.register({
-				name: 'pomodoro',
-				description: "Lists today's check-ins by repository.",
-				argumentHint: 'today',
-			})
+			.register({ ...COMMAND, argumentHint: 'today' })
 			.catch(() => {})
 		if (e.isInteractive) await begin($, settings)
 		return next(e)
@@ -228,12 +216,11 @@ export const register: Register = (on, options) => {
 		return ended
 	})
 
-	on('command.run', { command: 'pomodoro' }, async ($, e) => ({
-		text: ['', 'today'].includes(e.args.trim())
-			? today(
-					((await $.store.get('checkIns')) ?? []) as CheckIn[],
-					await $.clock.now(),
-				)
-			: 'Usage: /pomodoro [today]',
+	on('command.run', { command: COMMAND.name }, async ($, e) => ({
+		text: command(
+			e.args,
+			((await $.store.get('checkIns')) ?? []) as CheckIn[],
+			await $.clock.now(),
+		),
 	}))
 }

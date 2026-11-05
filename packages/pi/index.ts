@@ -3,22 +3,28 @@ import { readFile, rename, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import {
+	type ExecOptions,
 	type ExtensionAPI,
 	type ExtensionUIContext,
 	getAgentDir,
 } from '@earendil-works/pi-coding-agent'
 import {
+	banner,
+	CHIME,
 	type CheckIn,
+	COMMAND,
+	command,
 	DEFAULTS,
 	type Event,
+	IOREG,
 	initial,
+	ioregIdleMs,
 	logged,
 	MINUTE,
 	type Settings,
 	settingsFrom,
 	step,
 	type Timer,
-	today,
 	tomato,
 	WATCHER,
 } from './core'
@@ -63,6 +69,10 @@ export default function (pi: ExtensionAPI) {
 	let interval: ReturnType<typeof setInterval> | undefined
 	let wake: ReturnType<typeof setTimeout> | undefined
 
+	// Runs a command line from lib/core.
+	const run = ([file, ...args]: string[], options?: ExecOptions) =>
+		pi.exec(file, args, options)
+
 	// Moves the rhythm on by one event (lib/core), and returns what to carry out, in order.
 	function feed(event: Event) {
 		const next = step(state, event, settings)
@@ -72,7 +82,8 @@ export default function (pi: ExtensionAPI) {
 
 	// Leaving Pi or the session ends the child; where osascript can't run (not macOS) it ends at once.
 	function watch() {
-		const child = spawn('osascript', ['-l', 'JavaScript', '-e', WATCHER], {
+		const [file, ...args] = WATCHER
+		const child = spawn(file, args, {
 			cwd: '/',
 			stdio: ['ignore', 'pipe', 'ignore'],
 		})
@@ -90,29 +101,18 @@ export default function (pi: ExtensionAPI) {
 	}
 
 	// macOS input idle time (undefined: none to read, as off macOS).
-	async function ioregIdleMs() {
-		const { stdout } = await pi
-			.exec('ioreg', ['-r', '-c', 'IOHIDSystem', '-d', '1'], {
-				timeout: 5_000,
-			})
-			.catch(() => ({ stdout: '' }))
-		const ns = stdout.match(/"HIDIdleTime" = (\d+)/)?.[1]
-		return ns === undefined ? undefined : Number(ns) / 1e6
+	async function readIdleMs() {
+		const { stdout } = await run(IOREG, { timeout: 5_000 }).catch(() => ({
+			stdout: '',
+		}))
+		return ioregIdleMs(stdout)
 	}
 
 	// Pi has no desktop notification of its own: osascript posts the banner (macOS).
 	async function alert(text: string, hasSound: boolean, mark: string) {
 		ui?.notify(`${mark}${text}`, 'warning')
-		if (hasSound)
-			await pi
-				.exec('afplay', ['/System/Library/Sounds/Glass.aiff'])
-				.catch(() => {})
-		await pi
-			.exec('osascript', [
-				'-e',
-				`display notification "${text}" with title "Pomodoro"`,
-			])
-			.catch(() => {})
+		if (hasSound) await run(CHIME).catch(() => {})
+		await run(banner(text)).catch(() => {})
 	}
 
 	async function tick() {
@@ -121,7 +121,7 @@ export default function (pi: ExtensionAPI) {
 		// ioreg only when the watcher isn't there to go by; over SSH it would see the console's input.
 		const systemIdleMs =
 			state.lastInputThatCounts === undefined && !process.env.SSH_CONNECTION
-				? await ioregIdleMs()
+				? await readIdleMs()
 				: undefined
 		// Each wake aims at the moment the stretch without input becomes a break, so the newest replaces the last.
 		for (const effect of feed({ type: 'tick', now, timer, systemIdleMs }))
@@ -231,13 +231,11 @@ export default function (pi: ExtensionAPI) {
 		feed({ type: 'turnEnded' })
 	})
 
-	pi.registerCommand('pomodoro', {
-		description: "Lists today's check-ins by repository.",
+	pi.registerCommand(COMMAND.name, {
+		description: COMMAND.description,
 		handler: async (args, ctx) => {
 			ctx.ui.notify(
-				['', 'today'].includes(args.trim())
-					? today(((await load(logPath)) ?? []) as CheckIn[], Date.now())
-					: 'Usage: /pomodoro [today]',
+				command(args, ((await load(logPath)) ?? []) as CheckIn[], Date.now()),
 				'info',
 			)
 		},
