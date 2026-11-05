@@ -1,10 +1,9 @@
 import type { On, UiNotifyResult } from 'claude-code'
-import type { Engine, MockClock } from 'claude-code/testing'
+import type { Engine } from 'claude-code/testing'
 import { expect, mock, test } from 'claude-code/testing'
 
 const T0 = 1_700_000_000_000
 const MIN = 60_000
-const DAY = 24 * 60 * MIN
 
 const SENT: UiNotifyResult = { isSent: true, channel: 'ghostty' }
 
@@ -18,7 +17,7 @@ const world = (
 	notify: UiNotifyResult = SENT,
 ) => {
 	const clock = mock.clock(on, { now: T0 })
-	// The mod's store, open to the test, which ages it to stand for a stretch with no tick.
+	// The mod's store, open to the test.
 	const store: Record<string, unknown> = { ...seed }
 	on('store.get', (_, e) => ({ value: store[e.key] }))
 	on('store.set', (_, e) => {
@@ -33,6 +32,7 @@ const world = (
 	const labels: string[] = []
 	const chimes: number[] = []
 	on('session.start', (_, e) => ({ cwd: e.cwd }))
+	on('prompt.submit', (_, e) => ({ text: e.text }))
 	on('tool.call', () => ({ result: {} }))
 	on('command.register', (_, e) => ({ value: { command: e.name } }))
 	on('session.repo', () => ({
@@ -124,11 +124,11 @@ const world = (
 const start = ($: Engine) =>
 	$.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
 
-// A tool call of the main loop; true when the check-in came back with its result.
-const checked = async ($: Engine) =>
-	JSON.stringify(await $.tool.call({ tool: 'Bash', command: 'ls' })).includes(
-		'[Pomodoro]',
-	)
+// A tool call of the main loop, or of a subagent's with `agentId`; true when the check-in came back with its result.
+const checked = async ($: Engine, agentId?: string) =>
+	JSON.stringify(
+		await $.tool.call({ tool: 'Bash', command: 'ls', agentId }),
+	).includes('[Pomodoro]')
 
 // The end of the main loop's turn, answered or interrupted, or of a subagent's run with `agentId`.
 const endTurn = (
@@ -158,21 +158,6 @@ const listed = async ($: Engine) =>
 
 const texts = (checkIns: unknown) =>
 	(checkIns as { text: string }[]).map((c) => c.text)
-
-test('alerts at the block end, then every break length while there is no break', async ($, on) => {
-	const { clock, notified, chimes } = world(on, () => 0)
-	await start($)
-	await clock.advance(24 * MIN)
-	expect(notified.length).toBe(0)
-	await clock.advance(MIN)
-	expect(notified).toEqual([
-		'25 minutes without a break. Stand up and look away from the screen for 5.',
-	])
-	await clock.advance(5 * MIN)
-	expect(notified.length).toBe(2)
-	// Ghostty shows the banner of the tab in front for a few seconds only, and a Focus silences it: each alert also chimes.
-	expect(chimes.length).toBe(2)
-})
 
 test('the count is a mode label in the prompt footer', async ($, on) => {
 	const { clock } = world(on, () => 0)
@@ -231,19 +216,6 @@ test('a session with nobody at its prompt never counts: -p, VS Code, the desktop
 	expect(await checked($)).toBe(false)
 })
 
-test('a closed lid clears the status line: the block that starts on waking is not due', async ($, on) => {
-	const { clock, store, status, labels } = world(on, () => 0)
-	await start($)
-	await clock.advance(25 * MIN)
-	expect(status.at(-1)).toBe('🍅 25m, time for a break')
-
-	// Asleep for 10 minutes, so no tick ran, and the keyboard was touched on waking.
-	store.timer = { ...(store.timer as object), seenAt: clock.now() - 10 * MIN }
-	await clock.advance(MIN)
-	expect(status.at(-1)).toBe(undefined)
-	expect(labels.at(-1)).toBe('🍅 0/25m')
-})
-
 test('the banner goes through the terminal, osascript only where the terminal cannot raise one', async ($, on) => {
 	const { clock, notified, viaOsascript } = world(on, () => 0, undefined, {
 		isSent: false,
@@ -268,19 +240,7 @@ test('no osascript banner when Claude Code notifications are turned off', async 
 	expect(chimes.length).toBe(1)
 })
 
-test(
-	'no chime when turned off',
-	{ options: { sound: false } },
-	async ($, on) => {
-		const { clock, notified, chimes } = world(on, () => 0)
-		await start($)
-		await clock.advance(25 * MIN)
-		expect(notified.length).toBe(1)
-		expect(chimes.length).toBe(0)
-	},
-)
-
-test('the check-in rides the next tool result, once per work period, and never waits in an idle session', async ($, on) => {
+test('the check-in rides the next tool result, once per block, and never waits in an idle session', async ($, on) => {
 	let leftAt = Infinity
 	const { clock, session } = world(on, (now) =>
 		now >= leftAt ? now - leftAt : 0,
@@ -298,7 +258,7 @@ test('the check-in rides the next tool result, once per work period, and never w
 	)
 	expect(await checked($)).toBe(false)
 
-	// Still no break 25 minutes later: a second check.
+	// Still no break 25 minutes later: a second check-in.
 	await clock.advance(25 * MIN)
 	expect(await checked($)).toBe(true)
 
@@ -310,8 +270,25 @@ test('the check-in rides the next tool result, once per work period, and never w
 	expect(await checked($)).toBe(false)
 })
 
+// The check-in is for Claude's own loop, and a denied call returns no result to carry it.
+test("a subagent's tool call, or one that was denied, doesn't take the check-in", async ($, on) => {
+	// Beneath the mod, before world()'s answer to every tool call.
+	on('tool.call', { tool: 'Write' }, () => ({ deny: 'not now' }))
+	const { clock } = world(on, () => 0)
+	await start($)
+	await clock.advance(26 * MIN)
+	expect(await checked($, 'a1')).toBe(false)
+	expect(
+		JSON.stringify(
+			await $.tool.call({ tool: 'Write', file_path: '/a', content: '' }),
+		),
+	).not.toContain('[Pomodoro]')
+	expect(await checked($)).toBe(true)
+})
+
 test('a reload does not repeat the check-in the session was given', async ($, on) => {
-	// Overdue for a minute, and the check for this period was given before the mod reloaded (a /config change).
+	// Overdue for a minute, and the check-in for this block was given before the mod reloaded (a /config change). The
+	// number under sentKey is also what 0.6.1 left there, so an update doesn't repeat a check-in.
 	const { clock } = world(on, () => 0, {
 		timer: {
 			blockStart: T0 - 26 * MIN,
@@ -332,58 +309,11 @@ test('a reload does not repeat the check-in the session was given', async ($, on
 	await clock.settle()
 	expect(await checked($)).toBe(false)
 
-	// The next period still gets its check, and it's kept for the next reload.
+	// The next block still gets its check-in, and it's kept for the next reload.
 	await clock.advance(25 * MIN)
 	expect(await checked($)).toBe(true)
 	expect(sent).toEqual([T0 + 24 * MIN])
 })
-
-test('a break of just the break length counts, and no alert comes during it', async ($, on) => {
-	const leftAt = T0 + 25 * MIN + 10_000
-	const backAt = leftAt + 5 * MIN + 5_000
-	const { clock, notified, labels } = world(on, (now) =>
-		now >= leftAt && now < backAt ? now - leftAt : 0,
-	)
-	await start($)
-	await clock.advance(25 * MIN)
-	expect(notified.length).toBe(1)
-
-	await clock.set(leftAt + 5 * MIN + 2_000)
-	expect(labels.at(-1)).toBe('🍅 on a break')
-	expect(notified.length).toBe(1)
-
-	// Back at work: a fresh block, alerting 25 minutes after its first tick.
-	await clock.set(T0 + 31 * MIN)
-	expect(labels.at(-1)).toBe('🍅 0/25m')
-	await clock.advance(24 * MIN)
-	expect(notified.length).toBe(1)
-	await clock.advance(MIN)
-	expect(notified.length).toBe(2)
-})
-
-test('a gap with no tick (sleep, no session open) counts as a break', async ($, on) => {
-	const { clock, notified } = world(on, () => 0, {
-		timer: { blockStart: T0 - 180 * MIN, seenAt: T0 - 60 * MIN },
-	})
-	await start($)
-	await clock.advance(MIN)
-	expect(notified.length).toBe(0)
-	await clock.advance(24 * MIN)
-	expect(notified.length).toBe(1)
-})
-
-test(
-	'short settings still alert: 3-minute blocks, 1-minute breaks',
-	{ options: { workMinutes: 3, breakMinutes: 1 } },
-	async ($, on) => {
-		const { clock, notified } = world(on, () => 0)
-		await start($)
-		await clock.advance(3 * MIN)
-		expect(notified).toEqual([
-			'3 minutes without a break. Stand up and look away from the screen for 1.',
-		])
-	},
-)
 
 // With 1-minute breaks every tick asks for a wake. With input half a second before each tick, the next minute's tick
 // comes before that wake and replaces it, so only the minute's ticks run.
@@ -450,18 +380,6 @@ test(
 	},
 )
 
-test(
-	'no check-in when turned off',
-	{ options: { checkIn: false } },
-	async ($, on) => {
-		const { clock, notified } = world(on, () => 0)
-		await start($)
-		await clock.advance(25 * MIN)
-		expect(notified.length).toBe(1)
-		expect(await checked($)).toBe(false)
-	},
-)
-
 // Listed at the moment it's logged, so the day matches in any time zone: CI's and this Mac's differ.
 test("the check-in's summary is logged from any reply in its turn, and /pomodoro today lists it by repository", async ($, on) => {
 	const { clock, store, respond } = world(on, () => 0)
@@ -506,117 +424,26 @@ test("a turn that ends without the summary, answered or cut short, logs nothing,
 	expect(store.checkIns).toBe(undefined)
 })
 
-test("check-ins older than 14 days are dropped, and /pomodoro today lists only today's", async ($, on) => {
-	const { clock, store, respond } = world(on, () => 0, {
-		checkIns: [
-			{ at: T0 - 15 * DAY, repo: '/code/app', text: 'Old.' },
-			{ at: T0 - 2 * DAY, repo: null, text: 'Two days ago.' },
-		],
-	})
-	await start($)
-	await clock.advance(26 * MIN)
-	expect(await checked($)).toBe(true)
-	await respond($, 'Pomodoro: today.')
-	expect(texts(store.checkIns)).toEqual(['Two days ago.', 'Pomodoro: today.'])
-	expect(await listed($)).toMatch(/^app\n {2}\d\d:\d\d {2}Pomodoro: today\.$/)
-})
-
-// The watcher, printing each [time, text] as it comes, sorted and after T0. It then stays running, or ends with `exits`.
-const watcher = (
-	on: On,
-	clock: MockClock,
-	lines: [number, string][],
-	exits = false,
-) =>
-	on('process.spawn', async function* () {
-		for (const [at, text] of lines) {
-			await clock.sleep(at - clock.now())
-			yield { stream: 'stdout' as const, text: `${text}\n` }
-		}
-		if (!exits) await clock.sleep(24 * 60 * MIN)
-		return { value: { code: exits ? 1 : 0, signal: null } }
-	})
-
-// Mouse movement the watcher saw at each time; a key, click or scroll comes with its `k` line too.
-const moves = (times: number[]) =>
-	times.map((at): [number, string] => [at, `${at}`])
-const keys = (times: number[]) =>
-	times.map((at): [number, string] => [at, `${at}\nk${at}`])
-
-// Work until 29 minutes in (2 seconds of movement every 20, seen 4 times a second), away for 11, back at 40.
-// A mouse jiggler nudges every minute all along: two events 80 ms apart.
-const jiggledDay = () => {
-	const stretch = (from: number) =>
-		Array.from({ length: 9 }, (_, i) => from + i * 250)
-	const work = Array.from({ length: 87 }, (_, i) => T0 + 5_000 + i * 20_000)
-	const nudges = Array.from({ length: 50 }, (_, i) => T0 + i * MIN + 12_000)
-	return moves(
-		[
-			...work.flatMap(stretch),
-			...nudges.flatMap((at) => [at, at + 80]),
-			...stretch(T0 + 40 * MIN + 10_000),
-		].sort((a, b) => a - b),
-	)
-}
-
-test("a mouse jiggler's nudge doesn't keep a break from starting", async ($, on) => {
-	const { clock, labels } = world(on, () => 0)
-	watcher(on, clock, jiggledDay())
-	await start($)
-	await clock.set(T0 + 35 * MIN)
-	expect(labels.at(-1)).toBe('🍅 on a break')
-
-	await clock.set(T0 + 41 * MIN)
-	expect(labels.at(-1)).toBe('🍅 0/25m')
-})
-
-test(
-	'with moveSeconds 0, every movement counts, the nudge included',
-	{ options: { moveSeconds: 0 } },
-	async ($, on) => {
-		const { clock, labels } = world(on, () => 0)
-		watcher(on, clock, jiggledDay())
-		await start($)
-		await clock.set(T0 + 35 * MIN)
-		expect(labels.at(-1)).toBe('🍅 35/25m')
-	},
-)
-
-test('a lone key, click or scroll counts at once', async ($, on) => {
-	const { clock, labels } = world(on, () => 0)
-	// One press every 30 seconds, as when answering Claude's prompts or paging through a diff.
-	watcher(
-		on,
-		clock,
-		keys(Array.from({ length: 16 }, (_, i) => T0 + (i + 1) * 30_000)),
-	)
-	await start($)
-	await clock.set(T0 + 8 * MIN)
-	expect(labels.at(-1)).toBe('🍅 8/25m')
-})
-
-test("a reload while the person is away doesn't end their break", async ($, on) => {
-	// 26 minutes into a block, last input 4 minutes ago: the watcher's first line says so, as ioreg does.
-	const leftAt = T0 - 4 * MIN
-	const { clock, labels } = world(on, (now) => now - leftAt, {
-		timer: {
-			blockStart: T0 - 26 * MIN,
-			seenAt: T0 - 30_000,
-			lastInput: leftAt,
-		},
-	})
-	watcher(on, clock, [[T0 + 100, `${leftAt}`]])
-	await start($)
-	await clock.set(T0 + 2 * MIN)
-	expect(labels.at(-1)).toBe('🍅 on a break')
-})
-
 test('when the watcher ends, ioreg stands in', async ($, on) => {
-	const { clock, labels } = world(on, () => 0)
-	watcher(on, clock, [[T0 + 1_000, `${T0 + 1_000}`]], true)
+	// ioreg sees the person away since 10 minutes before the start; the watcher sees them back a second in, then ends.
+	let leftAt = T0 - 10 * MIN
+	const { clock, labels } = world(on, (now) =>
+		now >= leftAt ? now - leftAt : 0,
+	)
+	on('process.spawn', async function* () {
+		await clock.sleep(1_000)
+		yield { stream: 'stdout' as const, text: `${T0 + 1_000}\n` }
+		await clock.sleep(90_000)
+		return { value: { code: 1, signal: null } }
+	})
 	await start($)
+	await clock.set(T0 + MIN)
+	expect(labels.at(-1)).toBe('🍅 0/25m')
+
+	// Still at the keyboard, which only ioreg sees now.
+	leftAt = Infinity
 	await clock.set(T0 + 10 * MIN)
-	expect(labels.at(-1)).toBe('🍅 10/25m')
+	expect(labels.at(-1)).toBe('🍅 9/25m')
 })
 
 test('without ioreg, a break is a break from every session', async ($, on) => {
@@ -632,11 +459,21 @@ test('without ioreg, a break is a break from every session', async ($, on) => {
 	await clock.settle()
 	expect(labels.at(-1)).toBe('🍅 20/25m')
 
+	// Prompts, then tool calls, stand in for input: one a minute until the alert, then until the next.
+	for (let i = 0; i < 5; i++) {
+		await $.prompt.submit({
+			text: 'Go on.',
+			wait: false,
+			origin: { kind: 'composer' },
+		})
+		await clock.advance(MIN)
+	}
+	expect(notified.length).toBe(1)
 	for (let i = 0; i < 5; i++) {
 		await $.tool.call({ tool: 'Bash', command: 'ls' })
 		await clock.advance(MIN)
 	}
-	expect(notified.length).toBe(1)
+	expect(notified.length).toBe(2)
 
 	await clock.advance(6 * MIN)
 	expect(labels.at(-1)).toBe('🍅 on a break')

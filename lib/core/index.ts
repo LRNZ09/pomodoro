@@ -1,5 +1,6 @@
-// The work-and-break rhythm the pomodoro plugins share. It's pure: step() says what to do, and each agent's plugin
-// carries that out with its own APIs.
+// The work-and-break rhythm the pomodoro plugins share. Each agent creates an instance for each session
+// (createInstance), with a host that does its I/O, and passes it the session's events; whatever only one agent does
+// stays in that agent's code (docs/adr/0001). Inside, step() is pure: it says what to do, and the instance does it.
 
 // Shared by every open session through the agent's store: one pomodoro per person, not per session.
 export type Timer = {
@@ -55,7 +56,7 @@ export function settingsFrom(json: unknown): Settings | { problems: string[] } {
 // One session's own: its last prompt or tool call, the stretch of mouse movement under way, the last input that counts
 // (undefined: no watcher), the check-in now due, the last one sent, and whether the summary it asked for is still to
 // log.
-export type State = {
+type State = {
 	lastActivity: number
 	stretch: { start: number; last: number }
 	lastInputThatCounts?: number
@@ -64,13 +65,13 @@ export type State = {
 	awaitingSummary: boolean
 }
 
-export type Event =
+type Event =
 	// A prompt or a tool call.
 	| { type: 'activity'; now: number }
 	// A line the watcher printed.
 	| { type: 'input'; line: string }
 	| { type: 'watcherEnded' }
-	// The minute's tick, with the stored timer and the system's input idle time where the agent reads one.
+	// The minute's tick, with the stored timer and the system's input idle time where ioreg reads one.
 	| { type: 'tick'; now: number; timer: Timer; systemIdleMs?: number }
 	| { type: 'toolResult'; isMain: boolean }
 	// A finished response of the main loop, and the end of its turn (in Pi, the run).
@@ -78,7 +79,7 @@ export type Event =
 	| { type: 'turnEnded' }
 
 // In the order to carry them out.
-export type Effect =
+type Effect =
 	// Tick again this much later.
 	| { type: 'wake'; afterMs: number }
 	// Store the shared timer.
@@ -96,7 +97,7 @@ const DAY = 24 * 60 * MINUTE
 // Movement less than this apart is one stretch; the watcher looks 4 times a second.
 const STRETCH_GAP = 1_000
 
-export const initial: State = {
+const initial: State = {
 	lastActivity: 0,
 	stretch: { start: 0, last: 0 },
 	awaitingSummary: false,
@@ -105,7 +106,7 @@ export const initial: State = {
 // The command that runs a macOS JXA script, which prints the time of the latest input each time it changes (macOS HID
 // idle time, 4 times a second), and with a `k` before it the time of the latest key, click or scroll: a mouse jiggler
 // only moves the pointer.
-export const WATCHER = [
+const WATCHER = [
 	'osascript',
 	'-l',
 	'JavaScript',
@@ -127,7 +128,7 @@ for (;;) {
 
 // The command that prints macOS's input idle time, and that time in its output (undefined: none, as off macOS).
 export const IOREG = ['ioreg', '-r', '-c', 'IOHIDSystem', '-d', '1']
-export function ioregIdleMs(stdout: string) {
+function ioregIdleMs(stdout: string) {
 	const ns = stdout.match(/"HIDIdleTime" = (\d+)/)?.[1]
 	return ns === undefined ? undefined : Number(ns) / 1e6
 }
@@ -140,15 +141,189 @@ export const banner = (text: string) => [
 	`display notification "${text.replace(/["\\]/g, '\\$&')}" with title "Pomodoro"`,
 ]
 
-// /pomodoro, and what it prints for `args`.
+// /pomodoro, which an instance answers.
 export const COMMAND = {
 	name: 'pomodoro',
 	description: "Lists today's check-ins by repository.",
 }
-export const command = (args: string, log: CheckIn[], now: number) =>
-	['', 'today'].includes(args.trim())
-		? today(log, now)
-		: 'Usage: /pomodoro [today]'
+
+// What an agent gives an instance to do its I/O with. Each of these is general: what only one agent does stays in
+// that agent's code.
+export type Host = {
+	now: () => Promise<number>
+	// `fn` once after `ms`, or every `ms`; each returns what cancels it.
+	after: (ms: number, fn: () => void) => () => void
+	every: (ms: number, fn: () => void) => () => void
+	// What every session of the agent shares: the timer, and the log of summaries.
+	load: (key: 'timer' | 'checkIns') => Promise<unknown>
+	save: (key: 'timer' | 'checkIns', value: unknown) => Promise<void>
+	// A command's output; a rejection or '' when it can't run, which core takes the same.
+	run: (argv: readonly string[], timeoutMs?: number) => Promise<string>
+	// A command that runs on: its output as it comes, in pieces that needn't be lines, then `onEnd` once it ended or
+	// couldn't start. Returns what ends it.
+	spawn: (
+		argv: readonly string[],
+		onOutput: (text: string) => void,
+		onEnd: () => void,
+	) => () => void
+	// The root of the session's repository (null: none).
+	repo: () => Promise<string | null>
+	// The count, and the warning while a break is due.
+	show: (label: string, warning?: string) => void
+	// The agent's own alert. True: it raised a desktop banner, or mustn't, so no osascript banner follows.
+	notify: (text: string, mark: string) => Promise<boolean>
+	// What the session keeps across a reload, to hand back to createInstance.
+	keep: (kept: Kept) => void
+}
+
+// The block whose check-in the session got. Only that: the wait for the summary ends with the turn, and a reload
+// comes between turns.
+export type Kept = number
+
+// One session's: each agent passes it the session's events.
+export type Instance = {
+	// The clock, and the watcher unless over SSH: only where the count shows.
+	start: () => void
+	stop: () => void
+	// One tick now, as the clock would.
+	tick: () => Promise<void>
+	// A prompt or a tool call.
+	activity: () => Promise<void>
+	// The check-in to add to this tool result, if it's of the main loop and one is due: once per block.
+	toolResult: (isMain: boolean) => string | undefined
+	// A finished response of the main loop, which may hold the summary.
+	reply: (text: string) => Promise<void>
+	// The end of the main loop's turn (in Pi, the run).
+	turnEnded: () => void
+	// What /pomodoro prints for `args`.
+	command: (args: string) => Promise<string>
+}
+
+export function createInstance(
+	host: Host,
+	options: { settings: Settings; remote: boolean; kept?: unknown },
+): Instance {
+	const { settings, remote } = options
+	let state: State = {
+		...initial,
+		sentKey: typeof options.kept === 'number' ? options.kept : undefined,
+	}
+	// The watcher's output after its last full line, and what ends it, the minute's clock and the wake.
+	let partial = ''
+	let kill: (() => void) | undefined
+	let cancelClock: (() => void) | undefined
+	let cancelWake: (() => void) | undefined
+	let isStopped = false
+
+	// Moves the rhythm on by one event, and returns what to carry out, in order.
+	function feed(event: Event) {
+		const next = step(state, event, settings)
+		state = next.state
+		return next.effects
+	}
+
+	// Where osascript can't run (not macOS) it ends at once, and ioreg's idle time stands in, or where there's none, the
+	// session's activity.
+	function watch() {
+		kill = host.spawn(
+			WATCHER,
+			(text) => {
+				const lines = (partial + text).split('\n')
+				partial = lines.pop() ?? ''
+				for (const line of lines) feed({ type: 'input', line })
+			},
+			() => {
+				feed({ type: 'watcherEnded' })
+			},
+		)
+	}
+
+	// The agent's alert, the chime, and osascript's banner where the agent raised none (macOS).
+	async function alert(text: string, hasSound: boolean, mark: string) {
+		const isRaised = await host.notify(text, mark).catch(() => false)
+		// Ghostty shows the banner of the tab in front for a few seconds only, and a Focus silences it; not a chime.
+		if (hasSound) await host.run(CHIME).catch(() => {})
+		if (!isRaised) await host.run(banner(text)).catch(() => {})
+	}
+
+	async function runTick() {
+		const now = await host.now()
+		const timer = ((await host.load('timer')) ?? {}) as Timer
+		// ioreg only when the watcher isn't there to go by; over SSH it would see the console's input.
+		const systemIdleMs =
+			state.lastInputThatCounts === undefined && !remote
+				? ioregIdleMs(await host.run(IOREG, 5_000).catch(() => ''))
+				: undefined
+		for (const effect of feed({ type: 'tick', now, timer, systemIdleMs })) {
+			// A tick still under way when the instance stopped carries out nothing more: its session is gone.
+			if (isStopped) return
+			// Each wake aims at the moment the stretch without input becomes a break, so the newest replaces the last.
+			if (effect.type === 'wake') {
+				cancelWake?.()
+				cancelWake = host.after(
+					effect.afterMs,
+					() => void runTick().catch(() => {}),
+				)
+			}
+			// ponytail: read-then-write, so two sessions ticking in the same instant can both alert
+			else if (effect.type === 'persist') await host.save('timer', effect.timer)
+			else if (effect.type === 'show') host.show(effect.label, effect.warning)
+			else if (effect.type === 'alert')
+				await alert(effect.text, effect.sound, effect.mark)
+		}
+	}
+
+	// ponytail: read-then-write, so two sessions logging in the same instant can drop one
+	async function log(text: string) {
+		const at = await host.now()
+		const repo = await host.repo()
+		const checkIns = ((await host.load('checkIns')) ?? []) as CheckIn[]
+		await host.save('checkIns', logged(checkIns, { at, repo, text }))
+	}
+
+	return {
+		start() {
+			if (cancelClock !== undefined || isStopped) return
+			// Like ioreg, the watcher sees the console's input, not the input of an SSH session.
+			// ponytail: one watcher per open session; share one across sessions if many sessions matter
+			if (!remote) watch()
+			// A failed tick is retried by the next one.
+			void runTick().catch(() => {})
+			cancelClock = host.every(MINUTE, () => void runTick().catch(() => {}))
+		},
+		stop() {
+			isStopped = true
+			cancelClock?.()
+			cancelWake?.()
+			kill?.()
+		},
+		tick: runTick,
+		async activity() {
+			feed({ type: 'activity', now: await host.now() })
+		},
+		toolResult(isMain) {
+			const [checkIn] = feed({ type: 'toolResult', isMain })
+			if (checkIn?.type !== 'checkIn') return undefined
+			host.keep(checkIn.key)
+			return checkIn.text
+		},
+		async reply(text) {
+			for (const effect of feed({ type: 'reply', text }))
+				if (effect.type === 'log') await log(effect.text).catch(() => {})
+		},
+		turnEnded() {
+			feed({ type: 'turnEnded' })
+		},
+		async command(args) {
+			if (!['', 'today'].includes(args.trim()))
+				return 'Usage: /pomodoro [today]'
+			return today(
+				((await host.load('checkIns')) ?? []) as CheckIn[],
+				await host.now(),
+			)
+		},
+	}
+}
 
 // Whether to sum up, and when, is the agent's call: nothing stops it or asks the person anything.
 const check = (minutes: number) =>
@@ -160,7 +335,7 @@ const check = (minutes: number) =>
 export const tomato = (settings: Settings, word = '') =>
 	settings.emoji ? '🍅 ' : word
 
-export function step(
+function step(
 	state: State,
 	event: Event,
 	settings: Settings,
@@ -289,7 +464,7 @@ function tick(
 			mark: tomato(settings),
 			sound: settings.sound,
 		})
-	// One check per work period without a break, keyed by when that period ended.
+	// One check-in per block that ends without a break, keyed by when that block ended.
 	const due =
 		isDue && settings.checkIn
 			? {
@@ -300,8 +475,8 @@ function tick(
 	return { state: { ...state, due }, effects }
 }
 
-// The check-in rides a tool result of the main loop, once per work period. It counts as sent from here, so two tool
-// results at once can't both carry it.
+// The check-in rides a tool result of the main loop, once per block. It counts as sent from here, so two tool results
+// at once can't both carry it.
 function toolResult(
 	state: State,
 	isMain: boolean,
@@ -330,7 +505,7 @@ function reply(
 
 // The summary the note asks for: the first paragraph of a reply that starts with "Pomodoro:", with markdown around the
 // label (**Pomodoro:**) or a word before its colon (Pomodoro check-in:) allowed. Undefined: the agent didn't sum up.
-export const summary = (reply: string) =>
+const summary = (reply: string) =>
 	reply
 		.split(/\n\s*\n/)
 		.find((paragraph) => /^[\s#>*_]*pomodoro\b[^:\n]{0,20}:/i.test(paragraph))
@@ -339,13 +514,13 @@ export const summary = (reply: string) =>
 		.trim()
 
 // The log with `entry` added, its text cut to 4,000 characters, less the entries 14 days old.
-export const logged = (log: CheckIn[], entry: CheckIn): CheckIn[] => [
+const logged = (log: CheckIn[], entry: CheckIn): CheckIn[] => [
 	...log.filter((c) => entry.at - c.at < 14 * DAY),
 	{ ...entry, text: entry.text.slice(0, 4_000) },
 ]
 
 // Today's check-ins at local time, under the name of their repository's folder.
-export function today(log: CheckIn[], now: number) {
+function today(log: CheckIn[], now: number) {
 	const day = new Date(now).toDateString()
 	const byRepo = new Map<string | null, string[]>()
 	for (const { at, repo, text } of log)

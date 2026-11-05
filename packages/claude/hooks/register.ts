@@ -1,147 +1,89 @@
 import type { EngineInterface, Register } from 'claude-code'
 import {
-	banner,
-	CHIME,
-	type CheckIn,
 	COMMAND,
-	command,
-	type Event,
-	IOREG,
-	initial,
-	ioregIdleMs,
-	logged,
-	MINUTE,
+	createInstance,
+	type Host,
+	type Instance,
 	type Settings,
 	settingsFrom,
-	step,
-	type Timer,
 	tomato,
-	WATCHER,
 } from './core'
 
-// The last check delivered, kept in $.state: a reload (a /config change) starts the module over, not the session.
-const SENT = { plugin: 'pomodoro', key: 'sentKey' } as const
+// What core keeps across a reload, in $.state: a reload (a /config change) starts the module over, not the session.
+// The key is named for what it holds, the number 0.6.1 kept there too, so an update doesn't repeat a check-in.
+const KEPT = { plugin: 'pomodoro', key: 'sentKey' } as const
 const LABEL = { plugin: 'pomodoro', key: 'label' } as const
 
-// This session's own: the rhythm's state (lib/core), and whether its clock runs.
-// ponytail: a reload before the turn ends loses the wait for the summary; keep it in $.state if that matters
-let state = initial
-let isStarted = false
-let wake: { cancel: () => void } | undefined
+// This session's instance of core (lib/core), from its start.
+let instance: Instance | undefined
 
-// Moves the rhythm on by one event, and returns what to carry out, in order.
-function feed(event: Event, settings: Settings) {
-	const next = step(state, event, settings)
-	state = next.state
-	return next.effects
-}
-
-// Leaving the loop, or the module unloading, ends the child.
-// ponytail: one watcher per open session; share one through $.store if many sessions matter
-async function watch($: EngineInterface, settings: Settings) {
-	try {
-		const watcher = $.process.spawn({
-			argv: WATCHER,
-			cwd: '/',
-		})
-		for await (const { stream, text } of watcher)
-			if (stream === 'stdout')
-				for (const line of text.split('\n'))
-					feed({ type: 'input', line }, settings)
-	} catch {}
-	feed({ type: 'watcherEnded' }, settings)
-}
-
-// macOS input idle time, unless over SSH, where ioreg sees the console's input (undefined: none to read).
-async function systemIdleMs($: EngineInterface) {
-	if (await $.env.get('SSH_CONNECTION')) return undefined
-	try {
-		const { stdout } = await $.process.run(IOREG, {
-			cwd: '/',
-			timeoutMs: 5_000,
-		})
-		return ioregIdleMs(stdout)
-	} catch {
-		return undefined
-	}
-}
-
-async function alert(
-	$: EngineInterface,
-	text: string,
-	hasSound: boolean,
-	mark: string,
-) {
-	$.ui.toast(`${mark}${text}`, { timeoutMs: 15_000 })
-	// Ghostty shows the banner of the tab in front for a few seconds only, and a Focus silences it; not a chime (macOS).
-	if (hasSound) await $.process.run(CHIME, { cwd: '/' }).catch(() => {})
-	// osascript only where the terminal can't raise one; notifications turned off stay off (macOS).
-	const sent = await $.ui
-		.notify(text, { title: 'Pomodoro' })
-		.catch(() => undefined)
-	if (
-		!sent ||
-		(!sent.isSent &&
-			(sent.reason === 'no-channel' || sent.reason === 'no-surface'))
-	) {
-		await $.process.run(banner(text), { cwd: '/' }).catch(() => {})
-	}
-}
-
-// The count is a mode label in the prompt footer. The status line, which Claude Code marks ⚠, only says a break is due.
-function show($: EngineInterface, label: string, warning?: string) {
-	void $.state.set(LABEL, label).catch(() => {})
-	$.ui.status(warning)
-}
-
-async function tick($: EngineInterface, settings: Settings) {
-	const now = await $.clock.now()
-	const timer = ((await $.store.get('timer')) ?? {}) as Timer
-	// ioreg only when the watcher isn't there to go by.
-	const idleMs =
-		state.lastInputThatCounts === undefined ? await systemIdleMs($) : undefined
-	// Each wake aims at the moment the stretch without input becomes a break, so the newest replaces the last.
-	for (const effect of feed(
-		{ type: 'tick', now, timer, systemIdleMs: idleMs },
-		settings,
-	))
-		if (effect.type === 'wake') {
-			wake?.cancel()
-			wake = $.clock.after(
-				effect.afterMs,
-				() => void tick($, settings).catch(() => {}),
+// Claude Code's side of core: the engine's clock, store, processes and UI, through the session's start's `$`.
+function host($: EngineInterface): Host {
+	return {
+		now: () => $.clock.now(),
+		after: (ms, fn) => {
+			const timer = $.clock.after(ms, fn)
+			return () => timer.cancel()
+		},
+		every: (ms, fn) => {
+			const timer = $.clock.every(ms, fn)
+			return () => timer.cancel()
+		},
+		load: (key) => $.store.get(key),
+		save: (key, value) => $.store.set(key, value),
+		run: async (argv, timeoutMs) =>
+			(await $.process.run(argv, { cwd: '/', timeoutMs })).stdout,
+		// Leaving the loop, or the module unloading, ends the child.
+		spawn: (argv, onOutput, onEnd) => {
+			const child = $.process.spawn({ argv, cwd: '/' })
+			void (async () => {
+				try {
+					for await (const { stream, text } of child)
+						if (stream === 'stdout') onOutput(text)
+				} catch {}
+				onEnd()
+			})()
+			return () =>
+				void child.return({ code: null, signal: 'SIGTERM' }).catch(() => {})
+		},
+		repo: async () => (await $.session.repo())?.root ?? null,
+		// The count is a mode label in the prompt footer. The status line, which Claude Code marks ⚠, only says a break
+		// is due.
+		show: (label, warning) => {
+			void $.state.set(LABEL, label).catch(() => {})
+			$.ui.status(warning)
+		},
+		// osascript only where the terminal can't raise one; notifications turned off stay off (macOS).
+		notify: async (text, mark) => {
+			$.ui.toast(`${mark}${text}`, { timeoutMs: 15_000 })
+			const sent = await $.ui
+				.notify(text, { title: 'Pomodoro' })
+				.catch(() => undefined)
+			return (
+				sent !== undefined &&
+				(sent.isSent ||
+					(sent.reason !== 'no-channel' && sent.reason !== 'no-surface'))
 			)
-		}
-		// ponytail: read-then-write, so two sessions ticking in the same instant can both alert
-		else if (effect.type === 'persist') await $.store.set('timer', effect.timer)
-		else if (effect.type === 'show') show($, effect.label, effect.warning)
-		else if (effect.type === 'alert')
-			await alert($, effect.text, effect.sound, effect.mark)
-}
-
-// ponytail: read-then-write, so two sessions logging in the same instant can drop one
-async function logSummary($: EngineInterface, text: string) {
-	const at = await $.clock.now()
-	const repo = (await $.session.repo())?.root ?? null
-	const log = ((await $.store.get('checkIns')) ?? []) as CheckIn[]
-	await $.store.set('checkIns', logged(log, { at, repo, text }))
+		},
+		keep: (kept) => void $.state.set(KEPT, kept).catch(() => {}),
+	}
 }
 
 // The clock runs where the count shows: an interactive terminal session. Never in -p, VS Code or the desktop app.
-async function begin($: EngineInterface, settings: Settings) {
-	if (isStarted) return
-	isStarted = true
-	// Read before the first tick, which is what makes a check due.
-	const sentKey = await $.state.get(SENT).then(
+async function begin(
+	$: EngineInterface,
+	settings: Settings,
+	isInteractive: boolean,
+) {
+	const kept = await $.state.get(KEPT).then(
 		(read) => read.value,
 		() => undefined,
 	)
-	state = { ...state, sentKey }
 	// Like ioreg, the watcher sees the console's input, not the input of an SSH session.
-	if (!(await $.env.get('SSH_CONNECTION'))) void watch($, settings)
-	// A failed tick is retried by the next one.
-	void tick($, settings).catch(() => {})
-	$.clock.every(MINUTE, () => void tick($, settings).catch(() => {}))
+	const remote = Boolean(await $.env.get('SSH_CONNECTION'))
+	if (instance !== undefined) return
+	instance = createInstance(host($), { settings, remote, kept })
+	if (isInteractive) instance.start()
 }
 
 export const register: Register = (on, options) => {
@@ -154,7 +96,7 @@ export const register: Register = (on, options) => {
 		await $.command
 			.register({ ...COMMAND, argumentHint: 'today' })
 			.catch(() => {})
-		if (e.isInteractive) await begin($, settings)
+		await begin($, settings, e.isInteractive)
 		return next(e)
 	})
 
@@ -168,22 +110,18 @@ export const register: Register = (on, options) => {
 		)
 	})
 
-	on('prompt.submit', async ($, e, next) => {
-		feed({ type: 'activity', now: await $.clock.now() }, settings)
+	on('prompt.submit', async (_, e, next) => {
+		await instance?.activity()
 		return next(e)
 	})
 
 	// The check rides a tool result of the main loop: Claude reads it mid-turn, and it never waits in an idle session.
 	on('tool.call', async ($, e, next) => {
-		feed({ type: 'activity', now: await $.clock.now() }, settings)
+		await instance?.activity()
 		const ran = await next(e)
 		if (ran.deny !== undefined) return ran
-		const [checkIn] = feed(
-			{ type: 'toolResult', isMain: e.agentId === undefined },
-			settings,
-		)
-		if (checkIn?.type !== 'checkIn') return ran
-		void $.state.set(SENT, checkIn.key).catch(() => {})
+		const checkIn = instance?.toolResult(e.agentId === undefined)
+		if (checkIn === undefined) return ran
 		void $.session
 			.append({
 				message: {
@@ -197,34 +135,24 @@ export const register: Register = (on, options) => {
 				},
 			})
 			.catch(() => {})
-		return { ...ran, context: [...(ran.context ?? []), checkIn.text] }
+		return { ...ran, context: [...(ran.context ?? []), checkIn] }
 	})
 
 	// A response of the main loop.
-	on('turn.step', async function* ($, e, next) {
+	on('turn.step', async function* (_, e, next) {
 		const response = yield* next(e)
-		if (e.agentId === undefined)
-			for (const effect of feed(
-				{ type: 'reply', text: response.answer },
-				settings,
-			))
-				if (effect.type === 'log')
-					await logSummary($, effect.text).catch(() => {})
+		if (e.agentId === undefined) await instance?.reply(response.answer)
 		return response
 	})
 
 	// The main loop's turn ended, answered or cut short.
 	on('turn.complete', async (_, e, next) => {
 		const ended = await next(e)
-		if (e.agentId === undefined) feed({ type: 'turnEnded' }, settings)
+		if (e.agentId === undefined) instance?.turnEnded()
 		return ended
 	})
 
-	on('command.run', { command: COMMAND.name }, async ($, e) => ({
-		text: command(
-			e.args,
-			((await $.store.get('checkIns')) ?? []) as CheckIn[],
-			await $.clock.now(),
-		),
+	on('command.run', { command: COMMAND.name }, async (_, e) => ({
+		text: (await instance?.command(e.args)) ?? '',
 	}))
 }

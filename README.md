@@ -99,7 +99,7 @@ Pi has no notification channel of its own, so there the banner always comes thro
 
 ## Development
 
-The Claude Code plugin is in `packages/claude`, and the Pi extension in `packages/pi`. The rhythm itself, with neither agent's API in it, is in `lib/core`, which each of them copies in. From a clone of this repository:
+The Claude Code plugin is in `packages/claude`, and the Pi extension in `packages/pi`. The rhythm itself, with neither agent's API in it, is in `lib/core`, which each of them copies in: each agent creates an instance of it for each session, with a host that does the agent's I/O ([ADR 1](docs/adr/0001-core-carries-out-its-effects-through-a-host.md)). [`CONTEXT.md`](CONTEXT.md) holds the words the project uses. From a clone of this repository:
 
 ```
 bun install
