@@ -3,7 +3,7 @@
 // once, and the summary the model then gives is logged; and unless nothing ticks with a settings file that doesn't
 // fit. No login, so CI runs it against each Pi it checks.
 // Usage: bun scripts/pi-smoke.ts (after bun run build)
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { type CheckIn, DEFAULTS, MINUTE, type Timer } from '../lib/core'
@@ -68,9 +68,9 @@ const server = Bun.serve({
 	},
 })
 
-// One run of Pi in a new agent dir, with `settings` as its settings file; what `seen` held, whether Pi's tick stored the
-// timer and whether it alerted, the summaries logged, and Pi's stderr.
-async function run(settings?: string) {
+// One run of Pi in a new agent dir, with its settings file made by `settings`; what `seen` held, whether Pi's tick
+// stored the timer and whether it alerted, the summaries logged, and Pi's stderr.
+async function run(settings?: (path: string) => Promise<unknown>) {
 	seen = []
 	const agentDir = await mkdtemp(join(tmpdir(), 'pi-smoke-agent-'))
 	const workDir = await mkdtemp(join(tmpdir(), 'pi-smoke-work-'))
@@ -84,8 +84,7 @@ async function run(settings?: string) {
 		lastInput: now,
 	}
 	await writeFile(join(agentDir, 'pomodoro.json'), JSON.stringify(seeded))
-	if (settings)
-		await writeFile(join(agentDir, 'pomodoro-settings.json'), settings)
+	await settings?.(join(agentDir, 'pomodoro-settings.json'))
 	await writeFile(
 		join(agentDir, 'models.json'),
 		JSON.stringify({
@@ -156,6 +155,8 @@ async function run(settings?: string) {
 	}
 }
 
+// A settings file holding `text`.
+const file = (text: string) => (path: string) => writeFile(path, text)
 const off = { seen: [false, false], ticked: false, alerted: false, logged: [] }
 for (const [settings, expected, what] of [
 	[
@@ -168,13 +169,18 @@ for (const [settings, expected, what] of [
 		},
 		'came due with a tick, rode the first tool result, reached the model once, and its summary was logged',
 	],
-	['{ "workMinutes": 0 }', off, 'stayed off with workMinutes 0'],
-	['{ "workMinutes": 50', off, 'stayed off with a broken file'],
+	[file('{ "workMinutes": 0 }'), off, 'stayed off with workMinutes 0'],
+	[file('{ "workMinutes": 50'), off, 'stayed off with a broken file'],
+	[
+		(path: string) => mkdir(path),
+		off,
+		"stayed off with a settings file it can't read",
+	],
 ] as const) {
 	const { stderr, ...got } = await run(settings)
 	if (JSON.stringify(got) !== JSON.stringify(expected)) {
 		console.error(
-			`Pi ${version}${settings ? ` with ${settings}` : ''}: ${JSON.stringify(got)}, not ${JSON.stringify(expected)}.\n${stderr}`,
+			`Pi ${version} (${what}): ${JSON.stringify(got)}, not ${JSON.stringify(expected)}.\n${stderr}`,
 		)
 		process.exit(1)
 	}

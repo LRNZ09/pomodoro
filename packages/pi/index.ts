@@ -43,8 +43,13 @@ async function save(path: string, value: unknown) {
 
 // The file's settings, the defaults without one, or what's wrong with it.
 async function readSettings(path: string) {
-	const text = await readFile(path, 'utf8').catch(() => undefined)
-	if (text === undefined) return DEFAULTS
+	const text = await readFile(path, 'utf8').catch(
+		(error: NodeJS.ErrnoException) => error,
+	)
+	if (text instanceof Error)
+		return text.code === 'ENOENT'
+			? DEFAULTS
+			: { problems: [`the file can't be read (${text.code})`] }
 	try {
 		return settingsFrom(JSON.parse(text))
 	} catch {
