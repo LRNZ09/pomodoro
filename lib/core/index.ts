@@ -53,15 +53,13 @@ export function settingsFrom(json: unknown): Settings | { problems: string[] } {
 }
 
 // One session's own: its last prompt or tool call, the stretch of mouse movement under way, the last input that counts
-// (undefined: no watcher), the check-in now due, the last one sent, and a headless run's main-loop tool results still to
-// come before its forced check-in is due (0: none to come).
+// (undefined: no watcher), the check-in now due, and the last one sent.
 export type State = {
 	lastActivity: number
 	stretch: { start: number; last: number }
 	lastInputThatCounts?: number
 	due?: { key: number; text: string }
 	sentKey?: number
-	evalCheckInIn: number
 }
 
 export type Event =
@@ -73,9 +71,6 @@ export type Event =
 	// The minute's tick, with the stored timer and the system's input idle time where the agent reads one.
 	| { type: 'tick'; now: number; timer: Timer; systemIdleMs?: number }
 	| { type: 'toolResult'; isMain: boolean }
-	// A headless run (Pi's smoke test), where the clock never starts: the check-in is due with the main loop's Nth tool
-	// result.
-	| { type: 'forceDue'; afterToolResults: number }
 
 // In the order to carry them out.
 export type Effect =
@@ -97,7 +92,6 @@ const STRETCH_GAP = 1_000
 export const initial: State = {
 	lastActivity: 0,
 	stretch: { start: 0, last: 0 },
-	evalCheckInIn: 0,
 }
 
 // A macOS JXA script, run with `osascript -l JavaScript -e`. Prints the time of the latest input each time it changes
@@ -149,14 +143,7 @@ export function step(
 		case 'tick':
 			return tick(state, event, settings)
 		case 'toolResult':
-			return toolResult(state, event.isMain, settings)
-		case 'forceDue':
-			return {
-				state: settings.checkIn
-					? { ...state, evalCheckInIn: event.afterToolResults || 0 }
-					: state,
-				effects: [],
-			}
+			return toolResult(state, event.isMain)
 	}
 }
 
@@ -274,22 +261,12 @@ function tick(
 function toolResult(
 	state: State,
 	isMain: boolean,
-	settings: Settings,
 ): { state: State; effects: Effect[] } {
-	if (!isMain) return { state, effects: [] }
-	const due =
-		state.evalCheckInIn === 1
-			? { key: 0, text: check(settings.workMinutes) }
-			: state.due
-	const counted = {
-		...state,
-		due,
-		evalCheckInIn: Math.max(0, state.evalCheckInIn - 1),
-	}
-	if (due === undefined || due.key === state.sentKey)
-		return { state: counted, effects: [] }
+	const { due } = state
+	if (!isMain || due === undefined || due.key === state.sentKey)
+		return { state, effects: [] }
 	return {
-		state: { ...counted, sentKey: due.key },
+		state: { ...state, sentKey: due.key },
 		effects: [{ type: 'checkIn', ...due }],
 	}
 }

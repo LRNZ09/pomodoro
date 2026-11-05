@@ -158,7 +158,7 @@ test("a mouse jiggler's nudge doesn't count, a key counts at once, and a second 
 	expect(ended.state.lastInputThatCounts).toBeUndefined()
 })
 
-test('one check-in per work period, on a main-loop tool result, and forced in a headless run', () => {
+test('one check-in per work period, on a main-loop tool result', () => {
 	let state: State = ticks(26).state
 	const toolResult = (isMain = true) => {
 		const next = step(state, { type: 'toolResult', isMain }, SETTINGS)
@@ -171,22 +171,8 @@ test('one check-in per work period, on a main-loop tool result, and forced in a 
 	expect(toolResult()).toEqual([T0 + 25 * MINUTE])
 	expect(toolResult()).toEqual([])
 
-	state = step(
-		initial,
-		{ type: 'forceDue', afterToolResults: 3 },
-		SETTINGS,
-	).state
-	expect([toolResult(false), toolResult(), toolResult(), toolResult()]).toEqual(
-		[[], [], [], [0]],
-	)
-	expect(toolResult()).toEqual([])
-
 	const off = { ...SETTINGS, checkIn: false }
 	expect(ticks(26, () => 0, off).state.due).toBeUndefined()
-	expect(
-		step(initial, { type: 'forceDue', afterToolResults: 1 }, off).state
-			.evalCheckInIn,
-	).toBe(0)
 })
 
 test('the summary is the first paragraph that starts with Pomodoro:, and nothing else is', () => {

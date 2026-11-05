@@ -175,13 +175,9 @@ export default function (pi: ExtensionAPI) {
 			void tick().catch(() => {})
 			interval = setInterval(() => void tick().catch(() => {}), MINUTE)
 		}
-		// The smoke test (scripts/pi-smoke.ts) runs where the clock never starts: EVAL_POMODORO_CHECK_IN_DUE=N makes one
-		// check-in due with the agent's Nth tool result.
-		else
-			feed({
-				type: 'forceDue',
-				afterToolResults: Number(process.env.EVAL_POMODORO_CHECK_IN_DUE),
-			})
+		// The smoke test (scripts/pi-smoke.ts) runs where the clock never starts: EVAL_POMODORO_TICK makes one tick, on the
+		// timer it stored, before the first prompt.
+		else if (process.env.EVAL_POMODORO_TICK) await tick()
 	})
 
 	pi.on('session_shutdown', () => {
