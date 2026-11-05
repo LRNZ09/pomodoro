@@ -17,7 +17,6 @@ import {
 	type Settings,
 	settingsFrom,
 	step,
-	summary,
 	type Timer,
 	today,
 	tomato,
@@ -50,21 +49,19 @@ async function readSettings(path: string) {
 // Pi caches this factory per path, so everything lives in its closure, set again at each session start.
 export default function (pi: ExtensionAPI) {
 	const dir = getAgentDir()
-	// One timer per person, shared by every open Pi session; the log of replies after check-ins; the settings.
+	// One timer per person, shared by every open Pi session; the log of summaries after check-ins; the settings.
 	const timerPath = join(dir, 'pomodoro.json')
 	const logPath = join(dir, 'pomodoro-log.json')
 	const settingsPath = join(dir, 'pomodoro-settings.json')
 
 	let settings: Settings = DEFAULTS
+	// ponytail: a /reload or /resume starts the extension over and forgets the check-in it sent, so one can come again
 	let state = initial
 	// While a terminal session runs: its UI, the input watcher, the minute's tick, and the tick at a break's start.
 	let ui: ExtensionUIContext | undefined
 	let watcher: ChildProcess | undefined
 	let interval: ReturnType<typeof setInterval> | undefined
 	let wake: ReturnType<typeof setTimeout> | undefined
-	// Whether the summary the check-in asked for is still to log.
-	// ponytail: a /reload or /resume starts the extension over and forgets the check-in it sent, so one can come again
-	let awaitingSummary = false
 
 	// Moves the rhythm on by one event (lib/core), and returns what to carry out, in order.
 	function feed(event: Event) {
@@ -204,8 +201,6 @@ export default function (pi: ExtensionAPI) {
 			`${tomato(settings)}Pomodoro: told the agent your work block is up.`,
 			'info',
 		)
-		// The log needs the terminal UI: the smoke test's check-ins stay out of the person's log.
-		awaitingSummary = ctx.hasUI
 		// Replacing the content drops the structured content unless it comes back too.
 		return {
 			content: [...e.content, { type: 'text', text: checkIn.text }],
@@ -213,31 +208,27 @@ export default function (pi: ExtensionAPI) {
 		}
 	})
 
-	// The summary can come in any of the agent's finished responses after the check-in, mid-task too, until the run ends.
-	// One cut short (an error, Escape, the length limit) ends here too, with its partial text: a retry may finish it.
+	// A finished response of the agent's. One cut short (an error, Escape, the length limit) ends here too, with its
+	// partial text: it's not a reply, as a retry may finish it.
 	pi.on('message_end', async (e, ctx) => {
 		const { message } = e
 		if (
-			!awaitingSummary ||
 			!('role' in message) ||
 			message.role !== 'assistant' ||
 			!['stop', 'toolUse'].includes(message.stopReason)
 		)
 			return
-		const text = summary(
-			message.content
-				.map((part) => (part.type === 'text' ? part.text : ''))
-				.join('\n\n'),
-		)
-		if (text === undefined) return
-		awaitingSummary = false
-		await logSummary(text, ctx.cwd).catch(() => {})
+		const text = message.content
+			.map((part) => (part.type === 'text' ? part.text : ''))
+			.join('\n\n')
+		for (const effect of feed({ type: 'reply', text }))
+			if (effect.type === 'log')
+				await logSummary(effect.text, ctx.cwd).catch(() => {})
 	})
 
-	// No summary once Pi is done with the run, retries and compaction included (agent_end can come before them): the
-	// agent chose not to give one, or the run was cut short.
+	// Pi is done with the run, retries and compaction included (agent_end can come before them).
 	pi.on('agent_settled', () => {
-		awaitingSummary = false
+		feed({ type: 'turnEnded' })
 	})
 
 	pi.registerCommand('pomodoro', {

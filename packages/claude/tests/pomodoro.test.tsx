@@ -130,14 +130,19 @@ const checked = async ($: Engine) =>
 		'[Pomodoro]',
 	)
 
-// The end of the main loop's turn, answered or interrupted.
-const endTurn = ($: Engine, reason: 'answer' | 'aborted' = 'answer') =>
+// The end of the main loop's turn, answered or interrupted, or of a subagent's run with `agentId`.
+const endTurn = (
+	$: Engine,
+	reason: 'answer' | 'aborted' = 'answer',
+	agentId?: string,
+) =>
 	$.turn.complete({
 		answer: '',
 		durationMs: 1,
 		isAborted: reason === 'aborted',
 		turnId: 't',
 		reason,
+		agentId,
 	})
 
 // What /pomodoro today prints.
@@ -454,8 +459,10 @@ test("the check-in's summary is logged from any reply in its turn, and /pomodoro
 
 	await clock.advance(26 * MIN)
 	expect(await checked($)).toBe(true)
-	// Neither a subagent's summary nor a reply without one is logged; one given mid-task, beside a tool call, is.
+	// Neither a subagent's summary nor a reply without one is logged, and the end of the subagent's run doesn't end the
+	// wait; one given mid-task, beside a tool call, is.
 	await respond($, 'Pomodoro: the subagent.', [], 'a1')
+	await endTurn($, 'answer', 'a1')
 	await respond($, 'Writing step2.', ['Write'])
 	await respond(
 		$,

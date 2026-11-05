@@ -8,7 +8,6 @@ import {
 	type Settings,
 	settingsFrom,
 	step,
-	summary,
 	type Timer,
 	today,
 	tomato,
@@ -20,11 +19,9 @@ const SENT = { plugin: 'pomodoro', key: 'sentKey' } as const
 const LABEL = { plugin: 'pomodoro', key: 'label' } as const
 
 // This session's own: the rhythm's state (lib/core), and whether its clock runs.
+// ponytail: a reload before the turn ends loses the wait for the summary; keep it in $.state if that matters
 let state = initial
 let isStarted = false
-// Whether the summary the check-in asked for is still to log.
-// ponytail: a reload before the turn ends loses this, so that summary isn't logged; move it to $.state if that matters
-let awaitingSummary = false
 
 // Moves the rhythm on by one event, and returns what to carry out, in order.
 function feed(event: Event, settings: Settings) {
@@ -194,7 +191,6 @@ export const register: Register = (on, options) => {
 			settings,
 		)
 		if (checkIn?.type !== 'checkIn') return ran
-		awaitingSummary = true
 		void $.state.set(SENT, checkIn.key).catch(() => {})
 		void $.session
 			.append({
@@ -212,24 +208,23 @@ export const register: Register = (on, options) => {
 		return { ...ran, context: [...(ran.context ?? []), checkIn.text] }
 	})
 
-	// The summary can come in any response of the main loop after the check-in, mid-task too, until the turn ends.
+	// A response of the main loop.
 	on('turn.step', async function* ($, e, next) {
 		const response = yield* next(e)
-		const text =
-			awaitingSummary && e.agentId === undefined
-				? summary(response.answer)
-				: undefined
-		if (text !== undefined) {
-			awaitingSummary = false
-			await logSummary($, text).catch(() => {})
-		}
+		if (e.agentId === undefined)
+			for (const effect of feed(
+				{ type: 'reply', text: response.answer },
+				settings,
+			))
+				if (effect.type === 'log')
+					await logSummary($, effect.text).catch(() => {})
 		return response
 	})
 
-	// No summary by the turn's end: Claude chose not to give one, or the turn was cut short.
+	// The main loop's turn ended, answered or cut short.
 	on('turn.complete', async (_, e, next) => {
 		const ended = await next(e)
-		if (e.agentId === undefined) awaitingSummary = false
+		if (e.agentId === undefined) feed({ type: 'turnEnded' }, settings)
 		return ended
 	})
 

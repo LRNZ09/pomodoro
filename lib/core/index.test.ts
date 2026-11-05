@@ -4,6 +4,7 @@ import {
 	type CheckIn,
 	DEFAULTS,
 	type Effect,
+	type Event,
 	initial,
 	logged,
 	MINIMUM,
@@ -173,6 +174,34 @@ test('one check-in per work period, on a main-loop tool result', () => {
 
 	const off = { ...SETTINGS, checkIn: false }
 	expect(ticks(26, () => 0, off).state.due).toBeUndefined()
+})
+
+test("the check-in's summary is logged from the first reply that has one, until the turn ends", () => {
+	let state: State = ticks(26).state
+	const feed = (event: Event) => {
+		const next = step(state, event, SETTINGS)
+		state = next.state
+		return next.effects.map((effect) =>
+			effect.type === 'log' ? effect.text : effect.type,
+		)
+	}
+	const reply = (text: string) => feed({ type: 'reply', text })
+	// No summary is awaited before the check-in.
+	expect(reply('Pomodoro: early.')).toEqual([])
+	expect(feed({ type: 'toolResult', isMain: true })).toEqual(['checkIn'])
+	expect(reply('Wrote a.txt.')).toEqual([])
+	expect(reply('Done.\n\nPomodoro: on the goal.')).toEqual([
+		'Pomodoro: on the goal.',
+	])
+	expect(reply('Pomodoro: again.')).toEqual([])
+	// Only the tool result that carries the check-in starts a wait.
+	expect(feed({ type: 'toolResult', isMain: true })).toEqual([])
+	expect(reply('Pomodoro: after another tool result.')).toEqual([])
+
+	state = { ...ticks(26).state }
+	feed({ type: 'toolResult', isMain: true })
+	feed({ type: 'turnEnded' })
+	expect(reply('Pomodoro: the next turn.')).toEqual([])
 })
 
 test('the summary is the first paragraph that starts with Pomodoro:, and nothing else is', () => {

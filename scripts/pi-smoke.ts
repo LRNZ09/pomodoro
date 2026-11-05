@@ -1,21 +1,21 @@
 // Runs Pi with the extension against a scripted model on localhost, on a stored timer whose block is up. Fails unless
-// Pi's tick makes the check-in due without an alert, and the check-in rides the first tool result and reaches the
-// model, once; and unless nothing ticks with a settings file that doesn't fit. No login, so CI runs it against each Pi
-// it checks.
+// Pi's tick makes the check-in due without an alert, the check-in rides the first tool result and reaches the model,
+// once, and the summary the model then gives is logged; and unless nothing ticks with a settings file that doesn't
+// fit. No login, so CI runs it against each Pi it checks.
 // Usage: bun scripts/pi-smoke.ts (after bun run build)
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { DEFAULTS, MINUTE, type Timer } from '../lib/core'
+import { type CheckIn, DEFAULTS, MINUTE, type Timer } from '../lib/core'
 
 const pi = resolve('packages/pi/node_modules/@earendil-works/pi-coding-agent')
 const { version, bin } = await Bun.file(`${pi}/package.json`).json()
 
-// The model writes a.txt, then b.txt, then answers, by how many tool results it has been sent.
+// The model writes a.txt, then b.txt, then answers with a summary, by how many tool results it has been sent.
 const replies = [
 	{ tool: { name: 'write', arguments: { path: 'a.txt', content: '1' } } },
 	{ tool: { name: 'write', arguments: { path: 'b.txt', content: '2' } } },
-	{ text: 'Done.' },
+	{ text: 'Pomodoro: wrote a.txt and b.txt.\n\nDone.' },
 ]
 const chunk = (body: object) =>
 	`data: ${JSON.stringify({ id: 'x', object: 'chat.completion.chunk', created: 0, model: 'smoke', ...body })}\n\n`
@@ -69,7 +69,7 @@ const server = Bun.serve({
 })
 
 // One run of Pi in a new agent dir, with `settings` as its settings file; what `seen` held, whether Pi's tick stored the
-// timer and whether it alerted, and Pi's stderr.
+// timer and whether it alerted, the summaries logged, and Pi's stderr.
 async function run(settings?: string) {
 	seen = []
 	const agentDir = await mkdtemp(join(tmpdir(), 'pi-smoke-agent-'))
@@ -141,38 +141,37 @@ async function run(settings?: string) {
 	const timer: Timer = JSON.parse(
 		await readFile(join(agentDir, 'pomodoro.json'), 'utf8'),
 	)
+	const log: CheckIn[] = await readFile(
+		join(agentDir, 'pomodoro-log.json'),
+		'utf8',
+	).then(JSON.parse, () => [])
 	await rm(agentDir, { recursive: true, force: true })
 	await rm(workDir, { recursive: true, force: true })
 	return {
 		seen,
 		ticked: timer.seenAt !== seeded.seenAt,
 		alerted: timer.alertedAt !== seeded.alertedAt,
+		logged: log.map((c) => c.text),
 		stderr,
 	}
 }
 
-for (const [settings, seen, ticked, what] of [
+const off = { seen: [false, false], ticked: false, alerted: false, logged: [] }
+for (const [settings, expected, what] of [
 	[
 		undefined,
-		[true, false],
-		true,
-		'came due with a tick, rode the first tool result and reached the model once',
+		{
+			seen: [true, false],
+			ticked: true,
+			alerted: false,
+			logged: ['Pomodoro: wrote a.txt and b.txt.'],
+		},
+		'came due with a tick, rode the first tool result, reached the model once, and its summary was logged',
 	],
-	[
-		'{ "workMinutes": 0 }',
-		[false, false],
-		false,
-		'stayed off with workMinutes 0',
-	],
-	[
-		'{ "workMinutes": 50',
-		[false, false],
-		false,
-		'stayed off with a broken file',
-	],
+	['{ "workMinutes": 0 }', off, 'stayed off with workMinutes 0'],
+	['{ "workMinutes": 50', off, 'stayed off with a broken file'],
 ] as const) {
 	const { stderr, ...got } = await run(settings)
-	const expected = { seen, ticked, alerted: false }
 	if (JSON.stringify(got) !== JSON.stringify(expected)) {
 		console.error(
 			`Pi ${version}${settings ? ` with ${settings}` : ''}: ${JSON.stringify(got)}, not ${JSON.stringify(expected)}.\n${stderr}`,

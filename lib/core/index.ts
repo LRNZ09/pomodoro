@@ -53,13 +53,15 @@ export function settingsFrom(json: unknown): Settings | { problems: string[] } {
 }
 
 // One session's own: its last prompt or tool call, the stretch of mouse movement under way, the last input that counts
-// (undefined: no watcher), the check-in now due, and the last one sent.
+// (undefined: no watcher), the check-in now due, the last one sent, and whether the summary it asked for is still to
+// log.
 export type State = {
 	lastActivity: number
 	stretch: { start: number; last: number }
 	lastInputThatCounts?: number
 	due?: { key: number; text: string }
 	sentKey?: number
+	awaitingSummary: boolean
 }
 
 export type Event =
@@ -71,6 +73,9 @@ export type Event =
 	// The minute's tick, with the stored timer and the system's input idle time where the agent reads one.
 	| { type: 'tick'; now: number; timer: Timer; systemIdleMs?: number }
 	| { type: 'toolResult'; isMain: boolean }
+	// A finished response of the main loop, and the end of its turn (in Pi, the run).
+	| { type: 'reply'; text: string }
+	| { type: 'turnEnded' }
 
 // In the order to carry them out.
 export type Effect =
@@ -83,6 +88,8 @@ export type Effect =
 	| { type: 'alert'; text: string; mark: string; sound: boolean }
 	// Add `text` to this tool result.
 	| { type: 'checkIn'; key: number; text: string }
+	// Add the summary to the log.
+	| { type: 'log'; text: string }
 
 export const MINUTE = 60_000
 const DAY = 24 * 60 * MINUTE
@@ -92,6 +99,7 @@ const STRETCH_GAP = 1_000
 export const initial: State = {
 	lastActivity: 0,
 	stretch: { start: 0, last: 0 },
+	awaitingSummary: false,
 }
 
 // A macOS JXA script, run with `osascript -l JavaScript -e`. Prints the time of the latest input each time it changes
@@ -144,6 +152,11 @@ export function step(
 			return tick(state, event, settings)
 		case 'toolResult':
 			return toolResult(state, event.isMain)
+		case 'reply':
+			return reply(state, event.text)
+		// No summary by the turn's end: the agent chose not to give one, or the turn was cut short.
+		case 'turnEnded':
+			return { state: { ...state, awaitingSummary: false }, effects: [] }
 	}
 }
 
@@ -266,8 +279,21 @@ function toolResult(
 	if (!isMain || due === undefined || due.key === state.sentKey)
 		return { state, effects: [] }
 	return {
-		state: { ...state, sentKey: due.key },
+		state: { ...state, sentKey: due.key, awaitingSummary: true },
 		effects: [{ type: 'checkIn', ...due }],
+	}
+}
+
+// The summary can come in any response after the check-in, mid-task too, until the turn ends.
+function reply(
+	state: State,
+	text: string,
+): { state: State; effects: Effect[] } {
+	const found = state.awaitingSummary ? summary(text) : undefined
+	if (found === undefined) return { state, effects: [] }
+	return {
+		state: { ...state, awaitingSummary: false },
+		effects: [{ type: 'log', text: found }],
 	}
 }
 
