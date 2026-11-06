@@ -125,10 +125,11 @@ const start = ($: Engine) =>
 	$.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
 
 // A tool call of the main loop, or of a subagent's with `agentId`; true when the check-in came back with its result.
-const checked = async ($: Engine, agentId?: string) =>
-	JSON.stringify(
-		await $.tool.call({ tool: 'Bash', command: 'ls', agentId }),
-	).includes('[Pomodoro]')
+// Not a literal: Claude Code 2.1.304's test kit passes `agentId` on but doesn't declare it.
+const checked = async ($: Engine, agentId?: string) => {
+	const call = { tool: 'Bash' as const, command: 'ls', agentId }
+	return JSON.stringify(await $.tool.call(call)).includes('[Pomodoro]')
+}
 
 // The end of the main loop's turn, answered or interrupted, or of a subagent's run with `agentId`.
 const endTurn = (
