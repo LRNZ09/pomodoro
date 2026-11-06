@@ -3,11 +3,11 @@
 	"version": "0.6.1",
 	"author": { "name": "Lorenzo Pieri" },
 	"types": "./types/index.d.ts",
-	"description": "Pomodoro timer: a notification after a work block without a break, and a note that lets Claude sum up the session if that helps.",
+	"description": "Pomodoro timer: a notification after a block without a break, and a note that lets Claude sum up the session if that helps.",
 	"userConfig": {
 		"workMinutes": {
 			"type": "number",
-			"title": "Work block (minutes)",
+			"title": "Block (minutes)",
 			"description": "Minutes of work before the break alert.",
 			"default": 25,
 			"min": 1

@@ -254,7 +254,7 @@ test('the check-in rides the next tool result, once per block, and never waits i
 
 	expect(await checked($)).toBe(true)
 	expect(JSON.stringify(session.appended())).toContain(
-		'told Claude your work block is up',
+		'told Claude your block is up',
 	)
 	expect(await checked($)).toBe(false)
 
@@ -336,9 +336,7 @@ test(
 	{ options: { workMinutes: 0 } },
 	async ($, on) => {
 		world(on, () => 0)
-		await expect(start($)).rejects.toThrow(
-			'Work block (minutes) must be at least 1',
-		)
+		await expect(start($)).rejects.toThrow('Block (minutes) must be at least 1')
 	},
 )
 
@@ -372,7 +370,7 @@ test(
 		])
 		expect(await checked($)).toBe(true)
 		expect(JSON.stringify(session.appended())).toContain(
-			'Pomodoro: told Claude your work block is up',
+			'Pomodoro: told Claude your block is up',
 		)
 		expect(
 			JSON.stringify([labels, status, toasts, session.appended()]),

@@ -153,7 +153,7 @@ export default function (pi: ExtensionAPI) {
 		const checkIn = instance?.toolResult(e.parentToolCallId === undefined)
 		if (checkIn === undefined) return
 		ctx.ui.notify(
-			`${tomato(settings)}Pomodoro: told the agent your work block is up.`,
+			`${tomato(settings)}Pomodoro: told the agent your block is up.`,
 			'info',
 		)
 		// Replacing the content drops the structured content unless it comes back too.

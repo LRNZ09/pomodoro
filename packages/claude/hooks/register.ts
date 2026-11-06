@@ -129,7 +129,7 @@ export const register: Register = (on, options) => {
 					content: [
 						{
 							type: 'text',
-							text: `${tomato(settings)}Pomodoro: told Claude your work block is up.`,
+							text: `${tomato(settings)}Pomodoro: told Claude your block is up.`,
 						},
 					],
 				},
