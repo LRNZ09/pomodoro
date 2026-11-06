@@ -254,7 +254,7 @@ test('the check-in rides the next tool result, once per block, and never waits i
 
 	expect(await checked($)).toBe(true)
 	expect(JSON.stringify(session.appended())).toContain(
-		'told Claude your block is up',
+		'told the agent your block is up',
 	)
 	expect(await checked($)).toBe(false)
 
@@ -370,7 +370,7 @@ test(
 		])
 		expect(await checked($)).toBe(true)
 		expect(JSON.stringify(session.appended())).toContain(
-			'Pomodoro: told Claude your block is up',
+			'Pomodoro: told the agent your block is up',
 		)
 		expect(
 			JSON.stringify([labels, status, toasts, session.appended()]),

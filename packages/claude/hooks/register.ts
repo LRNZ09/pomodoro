@@ -4,9 +4,9 @@ import {
 	createInstance,
 	type Host,
 	type Instance,
+	notice,
 	type Settings,
 	settingsFrom,
-	tomato,
 } from './core'
 
 // What core keeps across a reload, in $.state: a reload (a /config change) starts the module over, not the session.
@@ -129,7 +129,7 @@ export const register: Register = (on, options) => {
 					content: [
 						{
 							type: 'text',
-							text: `${tomato(settings)}Pomodoro: told Claude your block is up.`,
+							text: notice(settings),
 						},
 					],
 				},

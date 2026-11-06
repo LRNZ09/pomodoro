@@ -332,8 +332,12 @@ const check = (minutes: number) =>
 	'serves the original goal, in a paragraph that starts with "Pomodoro:". Remind them to take a break.'
 
 // 🍅 before a line, unless the setting turns it off; `word` stands in where the line needs a name to make sense.
-export const tomato = (settings: Settings, word = '') =>
+const tomato = (settings: Settings, word = '') =>
 	settings.emoji ? '🍅 ' : word
+
+// What the person reads once the check-in went out, the same in every agent.
+export const notice = (settings: Settings) =>
+	`${tomato(settings)}Pomodoro: told the agent your block is up.`
 
 function step(
 	state: State,

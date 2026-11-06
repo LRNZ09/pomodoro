@@ -12,9 +12,9 @@ import {
 	DEFAULTS,
 	type Host,
 	type Instance,
+	notice,
 	type Settings,
 	settingsFrom,
-	tomato,
 } from './core'
 
 // A file's JSON, or undefined when it's missing or unreadable.
@@ -152,10 +152,7 @@ export default function (pi: ExtensionAPI) {
 		await instance?.activity()
 		const checkIn = instance?.toolResult(e.parentToolCallId === undefined)
 		if (checkIn === undefined) return
-		ctx.ui.notify(
-			`${tomato(settings)}Pomodoro: told the agent your block is up.`,
-			'info',
-		)
+		ctx.ui.notify(notice(settings), 'info')
 		// Replacing the content drops the structured content unless it comes back too.
 		return {
 			content: [...e.content, { type: 'text', text: checkIn }],
