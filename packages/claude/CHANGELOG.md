@@ -1,5 +1,13 @@
 # @beautifoo/claude-pomodoro
 
+## 0.6.2
+
+### Patch Changes
+
+- c1c8d63: A line of the input watcher's output that reached the plugin in two pieces was read as two broken times, which could restart the measure of how long the mouse had been moving. The pieces are now joined into whole lines first. The desktop notification your terminal raises for an alert now comes before the chime, not after it.
+- 1618545: With `breakMinutes` under 2, a wake-up tick never replaced the one before, so while you worked without a break the plugin ticked one more time a minute for each minute worked, until your next break. Each tick reads and writes the shared timer, and without the input watcher runs `ioreg`. Now, as in Pi, a new wake-up replaces the one before, so it ticks at most about twice a minute.
+- 3deed36: It says "pomodoro", the Pomodoro Technique's word, where it said "work block", and no longer calls that time work: `workMinutes` is "Pomodoro (minutes)" under `/config` and in the error for a value below 1, described as "Minutes without a break before the alert.", the transcript line reads "told the agent your pomodoro is up", and the plugin's description says "a notification after a pomodoro without a break".
+
 ## 0.6.1
 
 ### Patch Changes

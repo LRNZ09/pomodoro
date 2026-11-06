@@ -1,6 +1,6 @@
 {
 	"name": "pomodoro",
-	"version": "0.6.1",
+	"version": "0.6.2",
 	"author": { "name": "Lorenzo Pieri" },
 	"types": "./types/index.d.ts",
 	"description": "Pomodoro timer: a notification after a pomodoro without a break, and a note that lets Claude sum up the session if that helps.",
