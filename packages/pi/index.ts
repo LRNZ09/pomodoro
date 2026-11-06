@@ -45,6 +45,10 @@ async function readSettings(path: string) {
 	}
 }
 
+// What core keeps across a /reload, /resume or --continue: an entry in the session, the latest on any of its branches,
+// since a block is time, not part of the conversation (a /tree back past the check-in doesn't undo it).
+const KEPT = 'pomodoro'
+
 // Pi caches this factory per path, so everything lives in its closure, set again at each session start.
 export default function (pi: ExtensionAPI) {
 	const dir = getAgentDir()
@@ -105,8 +109,7 @@ export default function (pi: ExtensionAPI) {
 			ui?.notify(`${mark}${text}`, 'warning')
 			return false
 		},
-		// ponytail: a /reload or /resume starts the extension over and forgets the check-in it sent, so one can come again
-		keep: () => {},
+		keep: (kept) => pi.appendEntry(KEPT, kept),
 	})
 
 	pi.on('session_start', async (_, ctx) => {
@@ -122,9 +125,13 @@ export default function (pi: ExtensionAPI) {
 		settings = read
 		// The clock runs where the count shows: the terminal UI. Never with -p, --mode json or RPC.
 		const isTui = ctx.mode === 'tui'
+		const kept = ctx.sessionManager
+			.getEntries()
+			.findLast((entry) => entry.type === 'custom' && entry.customType === KEPT)
 		instance = createInstance(host(ctx.cwd, isTui ? ctx.ui : undefined), {
 			settings,
 			remote: Boolean(process.env.SSH_CONNECTION),
+			kept: kept?.type === 'custom' ? kept.data : undefined,
 		})
 		if (isTui) instance.start()
 		// The smoke test (scripts/pi-smoke.ts) runs where the clock never starts: EVAL_POMODORO_TICK makes one tick, on the

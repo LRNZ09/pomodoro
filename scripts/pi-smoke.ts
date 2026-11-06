@@ -1,8 +1,9 @@
 // Runs Pi with the extension against a scripted model on localhost, on a stored timer whose block is up, with stand-ins
 // for the macOS commands its tick runs. Fails unless that tick, before the first prompt, makes the check-in due and
 // alerts through those commands, the check-in rides the first tool result and reaches the model, once, and the summary
-// the model then gives is logged; unless nothing ticks with a settings file that doesn't fit; and on an extension
-// error. No login, so CI runs it against each Pi it checks.
+// the model then gives is logged; unless a second run that continues that session isn't given the same block's
+// check-in again; unless nothing ticks with a settings file that doesn't fit; and on an extension error. No login, so
+// CI runs it against each Pi it checks.
 // Usage: bun scripts/pi-smoke.ts (after bun run build)
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -52,7 +53,10 @@ const server = Bun.serve({
 		const { messages } = (await request.json()) as {
 			messages: { role: string; content: unknown }[]
 		}
-		const results = messages.filter((m) => m.role === 'tool')
+		// This run's tool results: those after the last prompt, as a continued session sends the earlier run's too.
+		const results = messages
+			.slice(messages.findLastIndex((m) => m.role === 'user') + 1)
+			.filter((m) => m.role === 'tool')
 		if (results.length > 0)
 			seen.push(JSON.stringify(results.at(-1)?.content).includes('[Pomodoro]'))
 		const reply = replies[Math.min(results.length, replies.length - 1)]
@@ -93,22 +97,41 @@ const server = Bun.serve({
 	},
 })
 
-// One run of Pi in a new agent dir, with its settings file made by `settings`; what `seen` held, whether Pi's tick
-// stored the timer and whether it alerted, the summaries logged, the stand-ins' calls, whether an extension threw, and
-// Pi's stderr.
-async function run(settings?: (path: string) => Promise<unknown>) {
+// A run's folders: Pi's agent dir, where the session is stored too, and the one it works in.
+type Dirs = { agentDir: string; workDir: string }
+const clean = ({ agentDir, workDir }: Dirs) =>
+	Promise.all([
+		rm(agentDir, { recursive: true, force: true }),
+		rm(workDir, { recursive: true, force: true }),
+	])
+
+// One run of Pi in new folders, with its settings file made by `settings`, or one that continues the session of an
+// `earlier` run in its folders, on the timer it left. What `seen` held, whether Pi's tick stored the timer and whether
+// it alerted, the summaries logged, the stand-ins' calls and whether an extension threw; Pi's stderr; the folders.
+async function run(
+	settings?: (path: string) => Promise<unknown>,
+	earlier?: Dirs,
+) {
 	seen = []
-	const agentDir = await mkdtemp(join(tmpdir(), 'pi-smoke-agent-'))
-	const workDir = await mkdtemp(join(tmpdir(), 'pi-smoke-work-'))
-	// A block just up, with no alert yet: a tick makes the check-in due, and alerts.
-	const now = Date.now()
-	const seeded: Timer = {
-		blockStart: now - DEFAULTS.workMinutes * MINUTE,
-		seenAt: now,
-		alertedAt: 0,
+	const dirs = earlier ?? {
+		agentDir: await mkdtemp(join(tmpdir(), 'pi-smoke-agent-')),
+		workDir: await mkdtemp(join(tmpdir(), 'pi-smoke-work-')),
 	}
+	const { agentDir, workDir } = dirs
+	const timerPath = join(agentDir, 'pomodoro.json')
 	const calls = join(agentDir, 'calls')
-	await writeFile(join(agentDir, 'pomodoro.json'), JSON.stringify(seeded))
+	await rm(calls, { force: true })
+	// A block just up, with no alert yet: a tick makes the check-in due, and alerts.
+	if (earlier === undefined) {
+		const now = Date.now()
+		const seeded: Timer = {
+			blockStart: now - DEFAULTS.workMinutes * MINUTE,
+			seenAt: now,
+			alertedAt: 0,
+		}
+		await writeFile(timerPath, JSON.stringify(seeded))
+	}
+	const before: Timer = JSON.parse(await readFile(timerPath, 'utf8'))
 	await settings?.(join(agentDir, 'pomodoro-settings.json'))
 	await writeFile(
 		join(agentDir, 'models.json'),
@@ -136,7 +159,9 @@ async function run(settings?: (path: string) => Promise<unknown>) {
 			'--mode',
 			'json',
 			'-p',
-			'--no-session',
+			'--session-dir',
+			join(agentDir, 'sessions'),
+			...(earlier === undefined ? [] : ['--continue']),
 			'-ne',
 			'-nc',
 			'-e',
@@ -164,9 +189,7 @@ async function run(settings?: (path: string) => Promise<unknown>) {
 	const stderr = await new Response(child.stderr).text()
 	await child.exited
 	clearTimeout(timeout)
-	const timer: Timer = JSON.parse(
-		await readFile(join(agentDir, 'pomodoro.json'), 'utf8'),
-	)
+	const timer: Timer = JSON.parse(await readFile(timerPath, 'utf8'))
 	const log: CheckIn[] = await readFile(
 		join(agentDir, 'pomodoro-log.json'),
 		'utf8',
@@ -179,16 +202,17 @@ async function run(settings?: (path: string) => Promise<unknown>) {
 				.map((line) => JSON.parse(line)),
 		() => [],
 	)
-	await rm(agentDir, { recursive: true, force: true })
-	await rm(workDir, { recursive: true, force: true })
 	return {
-		seen,
-		ticked: timer.seenAt !== seeded.seenAt,
-		alerted: timer.alertedAt !== seeded.alertedAt,
-		logged: log.map((c) => c.text),
-		calls: called,
-		crashed: stderr.includes('Extension error'),
+		got: {
+			seen,
+			ticked: timer.seenAt !== before.seenAt,
+			alerted: timer.alertedAt !== before.alertedAt,
+			logged: log.map((c) => c.text),
+			calls: called,
+			crashed: stderr.includes('Extension error'),
+		},
 		stderr,
+		dirs,
 	}
 }
 
@@ -203,6 +227,9 @@ const off = {
 	calls: [],
 	crashed: false,
 }
+// Each run in new folders, except the one that continues the run before it: those folders stay until the next run is
+// checked.
+let earlier: Dirs | undefined
 for (const [settings, expected, what] of [
 	[
 		undefined,
@@ -216,6 +243,20 @@ for (const [settings, expected, what] of [
 		},
 		'came due with a tick that alerted, rode the first tool result, reached the model once, and its summary was logged',
 	],
+	// The same block, a few seconds on: the tick makes its check-in due again, without alerting again, and the check-in
+	// kept in the session holds it back.
+	[
+		'continue',
+		{
+			seen: [false, false],
+			ticked: true,
+			alerted: false,
+			logged: ['Pomodoro: wrote a.txt and b.txt.'],
+			calls: [IOREG],
+			crashed: false,
+		},
+		"wasn't given again in a run that continued the session that got it",
+	],
 	[file('{ "workMinutes": 0 }'), off, 'stayed off with workMinutes 0'],
 	[file('{ "workMinutes": 50'), off, 'stayed off with a broken file'],
 	[
@@ -224,15 +265,23 @@ for (const [settings, expected, what] of [
 		"stayed off with a settings file it can't read",
 	],
 ] as const) {
-	const { stderr, ...got } = await run(settings)
+	const { got, stderr, dirs } =
+		settings === 'continue'
+			? await run(undefined, earlier)
+			: await run(settings)
 	if (JSON.stringify(got) !== JSON.stringify(expected)) {
 		console.error(
 			`Pi ${version} (${what}): ${JSON.stringify(got)}, not ${JSON.stringify(expected)}.\n${stderr}`,
 		)
 		await rm(fakes, { recursive: true, force: true })
+		await clean(dirs)
+		if (earlier !== undefined && earlier !== dirs) await clean(earlier)
 		process.exit(1)
 	}
 	console.log(`Pi ${version}: the check-in ${what}.`)
+	if (earlier !== undefined && earlier !== dirs) await clean(earlier)
+	earlier = dirs
 }
+if (earlier !== undefined) await clean(earlier)
 await rm(fakes, { recursive: true, force: true })
 server.stop(true)
