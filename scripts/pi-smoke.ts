@@ -1,9 +1,9 @@
-// Runs Pi with the extension against a scripted model on localhost, on a stored timer whose block is up, with stand-ins
-// for the macOS commands its tick runs. Fails unless that tick, before the first prompt, makes the check-in due and
-// alerts through those commands, the check-in rides the first tool result and reaches the model, once, and the summary
-// the model then gives is logged; unless a second run that continues that session isn't given the same block's
-// check-in again; unless nothing ticks with a settings file that doesn't fit; and on an extension error. No login, so
-// CI runs it against each Pi it checks.
+// Runs Pi with the extension against a scripted model on localhost, on a stored timer whose pomodoro is up, with
+// stand-ins for the macOS commands its tick runs. Fails unless that tick, before the first prompt, makes the check-in
+// due and alerts through those commands, the check-in rides the first tool result and reaches the model, once, and the
+// summary the model then gives is logged; unless a second run that continues that session isn't given the same
+// pomodoro's check-in again; unless nothing ticks with a settings file that doesn't fit; and on an extension error. No
+// login, so CI runs it against each Pi it checks.
 // Usage: bun scripts/pi-smoke.ts (after bun run build)
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -121,7 +121,7 @@ async function run(
 	const timerPath = join(agentDir, 'pomodoro.json')
 	const calls = join(agentDir, 'calls')
 	await rm(calls, { force: true })
-	// A block just up, with no alert yet: a tick makes the check-in due, and alerts.
+	// A pomodoro just up, with no alert yet: a tick makes the check-in due, and alerts.
 	if (earlier === undefined) {
 		const now = Date.now()
 		const seeded: Timer = {
@@ -243,8 +243,8 @@ for (const [settings, expected, what] of [
 		},
 		'came due with a tick that alerted, rode the first tool result, reached the model once, and its summary was logged',
 	],
-	// The same block, a few seconds on: the tick makes its check-in due again, without alerting again, and the check-in
-	// kept in the session holds it back.
+	// The same pomodoro, a few seconds on: the tick makes its check-in due again, without alerting again, and the
+	// check-in kept in the session holds it back.
 	[
 		'continue',
 		{

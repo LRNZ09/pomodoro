@@ -5,7 +5,7 @@
 	"plugins": [
 		{
 			"name": "pomodoro",
-			"description": "Pomodoro timer: a notification after a block without a break, and a note that lets Claude sum up the session if that helps.",
+			"description": "Pomodoro timer: a notification after a pomodoro without a break, and a note that lets Claude sum up the session if that helps.",
 			"source": { "source": "npm", "package": "@beautifoo/claude-pomodoro" }
 		}
 	]

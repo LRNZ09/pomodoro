@@ -176,7 +176,7 @@ export type Host = {
 	keep: (kept: Kept) => void
 }
 
-// The block whose check-in the session got. Only that: the wait for the summary ends with the turn, and a reload
+// The pomodoro whose check-in the session got. Only that: the wait for the summary ends with the turn, and a reload
 // comes between turns.
 export type Kept = number
 
@@ -189,7 +189,7 @@ export type Instance = {
 	tick: () => Promise<void>
 	// A prompt or a tool call.
 	activity: () => Promise<void>
-	// The check-in to add to this tool result, if it's of the main loop and one is due: once per block.
+	// The check-in to add to this tool result, if it's of the main loop and one is due: once per pomodoro.
 	toolResult: (isMain: boolean) => string | undefined
 	// A finished response of the main loop, which may hold the summary.
 	reply: (text: string) => Promise<void>
@@ -337,7 +337,7 @@ const tomato = (settings: Settings, word = '') =>
 
 // What the person reads once the check-in went out, the same in every agent.
 export const notice = (settings: Settings) =>
-	`${tomato(settings)}Pomodoro: told the agent your block is up.`
+	`${tomato(settings)}Pomodoro: told the agent your pomodoro is up.`
 
 function step(
 	state: State,
@@ -410,7 +410,7 @@ function tick(
 		state.lastInputThatCounts !== undefined
 			? now - state.lastInputThatCounts
 			: (systemIdleMs ?? now - state.lastActivity)
-	// The latest input any session has seen, so an idle session can't end the block another one is working in.
+	// The latest input any session has seen, so an idle session can't end the pomodoro another one is working in.
 	const lastInput = Math.max(timer.lastInput ?? 0, now - idleMs)
 	const idle = now - lastInput
 
@@ -468,7 +468,7 @@ function tick(
 			mark: tomato(settings),
 			sound: settings.sound,
 		})
-	// One check-in per block that ends without a break, keyed by when that block ended.
+	// One check-in per pomodoro that ends without a break, keyed by when that pomodoro ended.
 	const due =
 		isDue && settings.checkIn
 			? {
@@ -479,8 +479,8 @@ function tick(
 	return { state: { ...state, due }, effects }
 }
 
-// The check-in rides a tool result of the main loop, once per block. It counts as sent from here, so two tool results
-// at once can't both carry it.
+// The check-in rides a tool result of the main loop, once per pomodoro. It counts as sent from here, so two tool
+// results at once can't both carry it.
 function toolResult(
 	state: State,
 	isMain: boolean,

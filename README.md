@@ -46,10 +46,10 @@ Tested with Pi 1.5. It runs in Pi's terminal UI only: not with `-p`, `--mode jso
 ## Features
 
 The same in both agents, as Claude Code shows them; how Pi differs follows the list.
-- **Check-in.** Once the block is up, Claude gets a note with its next tool result: you've worked 25 minutes without a break, it should carry on with the task, and if it would help you, include in its next reply a short summary of the session so far and whether it still serves the original goal, in a paragraph that starts with "Pomodoro:", then remind you to take a break. Nothing stops Claude or asks you anything: whether to sum up is Claude's call. A line in the transcript tells you the note was sent. It's sent once for every 25 minutes without a break, and only while Claude is working: it never waits in an idle session for your next prompt. It reaches the main conversation only, so during a long-running subagent it comes once the subagent returns.
+- **Check-in.** Once the pomodoro is up, Claude gets a note with its next tool result: you've worked 25 minutes without a break, it should carry on with the task, and if it would help you, include in its next reply a short summary of the session so far and whether it still serves the original goal, in a paragraph that starts with "Pomodoro:", then remind you to take a break. Nothing stops Claude or asks you anything: whether to sum up is Claude's call. A line in the transcript tells you the note was sent. It's sent once for every 25 minutes without a break, and only while Claude is working: it never waits in an idle session for your next prompt. It reaches the main conversation only, so during a long-running subagent it comes once the subagent returns.
 - **Log.** Claude's summary at each check-in, that "Pomodoro:" paragraph from any reply until its turn ends, is kept for 14 days, with the time and the repository, in Claude Code's plugin store on this machine (`~/.claude/plugins/store/`). `/pomodoro today` lists today's, by repository. A turn with no summary logs nothing.
 - **Count.** Shows how long you've worked since your last break, at the right of the prompt footer beside its other labels: `🍅 12/25m`. Once a break is due, a status line under the prompt says so too; Claude Code draws a plugin's status line in yellow with a ⚠, as `⚠ pomodoro: 🍅 27m, time for a break`. A phone following the session shows that line only.
-- **Alert.** After a 25-minute block it plays a chime and shows a toast and a desktop notification. The alert repeats every 5 minutes until you take a break, but not once you've been away from the keyboard for 2 minutes (the break may already be under way).
+- **Alert.** After a 25-minute pomodoro it plays a chime and shows a toast and a desktop notification. The alert repeats every 5 minutes until you take a break, but not once you've been away from the keyboard for 2 minutes (the break may already be under way).
 
 It runs on a clock, a tick every minute, so the alert comes on time even while you're reading code and not typing to Claude.
 
@@ -58,7 +58,7 @@ In Pi, the count and the break warning share one entry at the foot of the screen
 ## Breaks
 
 You never start or stop the timer:
-- 5 minutes with no keyboard or mouse input (macOS idle time) counts as a break, and the next block starts when you're back.
+- 5 minutes with no keyboard or mouse input (macOS idle time) counts as a break, and the next pomodoro starts when you're back.
 - Mouse movement counts only once it goes on for a second, so the nudge a keep-awake app's mouse jiggler gives every minute doesn't keep a break from ever starting. Keys, clicks and scrolls count at once.
 - Idle time is this Mac's own: 5 minutes spent on another computer counts as a break, unless you use this Mac's keyboard or trackpad in between (Universal Control included).
 - A closed lid, or a stretch with no session of the agent open, also counts as a break.

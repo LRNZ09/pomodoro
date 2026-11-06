@@ -203,7 +203,7 @@ const sounds = (w: World) => w.runs.filter((argv) => argv[0] !== 'ioreg')
 
 const texts = (checkIns: unknown) => (checkIns as CheckIn[]).map((c) => c.text)
 
-// An instance 26 minutes into a block, which has given its check-in.
+// An instance 26 minutes into a pomodoro, which has given its check-in.
 async function checkedIn(w: World) {
 	const pomodoro = start(w)
 	await w.advance(26 * MINUTE)
@@ -211,7 +211,7 @@ async function checkedIn(w: World) {
 	return pomodoro
 }
 
-test('alerts at the block end, then every break length while there is no break', async () => {
+test('alerts when a pomodoro is up, then every break length while there is no break', async () => {
 	const w = world()
 	start(w)
 	await w.advance(24 * MINUTE)
@@ -260,7 +260,7 @@ test('no chime when turned off', async () => {
 	expect(sounds(w)).toEqual([])
 })
 
-test('a closed lid clears the status line: the block that starts on waking is not due', async () => {
+test('a closed lid clears the status line: the pomodoro that starts on waking is not due', async () => {
 	const w = world()
 	start(w)
 	await w.advance(25 * MINUTE)
@@ -289,7 +289,7 @@ test('a break of just the break length counts, and no alert comes during it', as
 	expect(w.label()).toBe('🍅 on a break')
 	expect(w.notified.length).toBe(1)
 
-	// Back at work: a fresh block, alerting 25 minutes after its first tick.
+	// Back at work: a fresh pomodoro, alerting 25 minutes after its first tick.
 	await w.set(T0 + 31 * MINUTE)
 	expect(w.label()).toBe('🍅 0/25m')
 	await w.advance(24 * MINUTE)
@@ -299,7 +299,7 @@ test('a break of just the break length counts, and no alert comes during it', as
 })
 
 test('a gap with no tick (sleep, no session open) counts as a break', async () => {
-	// The last tick a minute before keeps the block; one a break's length before is a gap.
+	// The last tick a minute before keeps the pomodoro; one a break's length before is a gap.
 	for (const [seenAgo, label] of [
 		[MINUTE, '🍅 20/25m'],
 		[5 * MINUTE, '🍅 0/25m'],
@@ -324,7 +324,7 @@ test('a gap with no tick (sleep, no session open) counts as a break', async () =
 	expect(w.notified.length).toBe(1)
 })
 
-test('short settings still alert: 3-minute blocks, 1-minute breaks', async () => {
+test('short settings still alert: 3-minute pomodoros, 1-minute breaks', async () => {
 	const w = world()
 	start(w, { workMinutes: 3, breakMinutes: 1 })
 	await w.advance(3 * MINUTE)
@@ -391,7 +391,7 @@ test('no check-in when turned off', async () => {
 	expect(pomodoro.toolResult(true)).toBeUndefined()
 })
 
-test("one check-in per block, on a main-loop tool result, kept so that a reloaded instance gives only the next block's", async () => {
+test("one check-in per pomodoro, on a main-loop tool result, kept so that a reloaded instance gives only the next pomodoro's", async () => {
 	const w = world()
 	const pomodoro = start(w)
 	await w.advance(26 * MINUTE)
@@ -442,7 +442,7 @@ test("the check-in's summary is logged from the first reply that has one, until 
 		{ at: T0 + 26 * MINUTE, repo: '/code/app', text: 'Pomodoro: on the goal.' },
 	])
 
-	// The next block's check-in, in a turn that ends without its summary.
+	// The next pomodoro's check-in, in a turn that ends without its summary.
 	await w.advance(25 * MINUTE)
 	expect(pomodoro.toolResult(true)).toBeDefined()
 	pomodoro.turnEnded()
@@ -588,7 +588,7 @@ test('a watcher line split across two output pieces counts once, as one whole li
 })
 
 test("a reload while the person is away doesn't end their break", async () => {
-	// 26 minutes into a block, last input 4 minutes ago: the watcher's first line says so, as ioreg does.
+	// 26 minutes into a pomodoro, last input 4 minutes ago: the watcher's first line says so, as ioreg does.
 	const leftAt = T0 - 4 * MINUTE
 	const w = world({
 		idle: (now) => now - leftAt,
@@ -617,7 +617,7 @@ test('when the watcher ends, ioreg stands in', async () => {
 })
 
 test('without ioreg, a break is a break from every session', async () => {
-	// Another session was in use 10 seconds ago, 20 minutes into a block: a fresh session keeps that block.
+	// Another session was in use 10 seconds ago, 20 minutes into a pomodoro: a fresh session keeps that pomodoro.
 	const w = world({
 		idle: () => null,
 		seed: {

@@ -46,7 +46,7 @@ async function readSettings(path: string) {
 }
 
 // What core keeps across a /reload, /resume or --continue: an entry in the session, the latest on any of its branches,
-// since a block is time, not part of the conversation (a /tree back past the check-in doesn't undo it).
+// since a pomodoro is time, not part of the conversation (a /tree back past the check-in doesn't undo it).
 const KEPT = 'pomodoro'
 
 // Pi caches this factory per path, so everything lives in its closure, set again at each session start.

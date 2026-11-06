@@ -240,7 +240,7 @@ test('no osascript banner when Claude Code notifications are turned off', async 
 	expect(chimes.length).toBe(1)
 })
 
-test('the check-in rides the next tool result, once per block, and never waits in an idle session', async ($, on) => {
+test('the check-in rides the next tool result, once per pomodoro, and never waits in an idle session', async ($, on) => {
 	let leftAt = Infinity
 	const { clock, session } = world(on, (now) =>
 		now >= leftAt ? now - leftAt : 0,
@@ -254,7 +254,7 @@ test('the check-in rides the next tool result, once per block, and never waits i
 
 	expect(await checked($)).toBe(true)
 	expect(JSON.stringify(session.appended())).toContain(
-		'told the agent your block is up',
+		'told the agent your pomodoro is up',
 	)
 	expect(await checked($)).toBe(false)
 
@@ -287,7 +287,7 @@ test("a subagent's tool call, or one that was denied, doesn't take the check-in"
 })
 
 test('a reload does not repeat the check-in the session was given', async ($, on) => {
-	// Overdue for a minute, and the check-in for this block was given before the mod reloaded (a /config change). The
+	// Overdue for a minute, and the check-in for this pomodoro was given before the mod reloaded (a /config change). The
 	// number under sentKey is also what 0.6.1 left there, so an update doesn't repeat a check-in.
 	const { clock } = world(on, () => 0, {
 		timer: {
@@ -309,7 +309,7 @@ test('a reload does not repeat the check-in the session was given', async ($, on
 	await clock.settle()
 	expect(await checked($)).toBe(false)
 
-	// The next block still gets its check-in, and it's kept for the next reload.
+	// The next pomodoro still gets its check-in, and it's kept for the next reload.
 	await clock.advance(25 * MIN)
 	expect(await checked($)).toBe(true)
 	expect(sent).toEqual([T0 + 24 * MIN])
@@ -330,13 +330,15 @@ test(
 	},
 )
 
-// Claude Code refuses it in /config too. A block of 0 would put the check-in on every tool result.
+// Claude Code refuses it in /config too. A pomodoro of 0 minutes would put the check-in on every tool result.
 test(
 	'a setting below its minimum fails the load, naming the setting',
 	{ options: { workMinutes: 0 } },
 	async ($, on) => {
 		world(on, () => 0)
-		await expect(start($)).rejects.toThrow('Block (minutes) must be at least 1')
+		await expect(start($)).rejects.toThrow(
+			'Pomodoro (minutes) must be at least 1',
+		)
 	},
 )
 
@@ -370,7 +372,7 @@ test(
 		])
 		expect(await checked($)).toBe(true)
 		expect(JSON.stringify(session.appended())).toContain(
-			'Pomodoro: told the agent your block is up',
+			'Pomodoro: told the agent your pomodoro is up',
 		)
 		expect(
 			JSON.stringify([labels, status, toasts, session.appended()]),
@@ -445,7 +447,7 @@ test('when the watcher ends, ioreg stands in', async ($, on) => {
 })
 
 test('without ioreg, a break is a break from every session', async ($, on) => {
-	// Another session was in use 10 seconds ago, 20 minutes into a block: a fresh session keeps that block.
+	// Another session was in use 10 seconds ago, 20 minutes into a pomodoro: a fresh session keeps that pomodoro.
 	const { clock, notified, labels } = world(on, () => null, {
 		timer: {
 			blockStart: T0 - 20 * MIN,
