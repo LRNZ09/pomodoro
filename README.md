@@ -1,6 +1,6 @@
 # Pomodoro for Claude Code and Pi
 
-After every 25 minutes of work, you get a reminder to take a break, and your agent gets a note so it can sum up the session if that helps. It's a plugin for [Claude Code](https://code.claude.com) and an extension for [Pi](https://pi.dev).
+After 25 minutes without a break, you get a reminder to take one, and your agent gets a note so it can sum up the session if that helps. It's a plugin for [Claude Code](https://code.claude.com) and an extension for [Pi](https://pi.dev).
 
 ## Install
 
@@ -46,9 +46,9 @@ Tested with Pi 1.5. It runs in Pi's terminal UI only: not with `-p`, `--mode jso
 ## Features
 
 The same in both agents, as Claude Code shows them; how Pi differs follows the list.
-- **Check-in.** Once the pomodoro is up, Claude gets a note with its next tool result: you've worked 25 minutes without a break, it should carry on with the task, and if it would help you, include in its next reply a short summary of the session so far and whether it still serves the original goal, in a paragraph that starts with "Pomodoro:", then remind you to take a break. Nothing stops Claude or asks you anything: whether to sum up is Claude's call. A line in the transcript tells you the note was sent. It's sent once for every 25 minutes without a break, and only while Claude is working: it never waits in an idle session for your next prompt. It reaches the main conversation only, so during a long-running subagent it comes once the subagent returns.
+- **Check-in.** Once the pomodoro is up, Claude gets a note with its next tool result: you've gone 25 minutes without a break, it should carry on with the task, and if it would help you, include in its next reply a short summary of the session so far and whether it still serves the original goal, in a paragraph that starts with "Pomodoro:", then remind you to take a break. Nothing stops Claude or asks you anything: whether to sum up is Claude's call. A line in the transcript tells you the note was sent. It's sent once for every 25 minutes without a break, and only while Claude is working: it never waits in an idle session for your next prompt. It reaches the main conversation only, so during a long-running subagent it comes once the subagent returns.
 - **Log.** Claude's summary at each check-in, that "Pomodoro:" paragraph from any reply until its turn ends, is kept for 14 days, with the time and the repository, in Claude Code's plugin store on this machine (`~/.claude/plugins/store/`). `/pomodoro today` lists today's, by repository. A turn with no summary logs nothing.
-- **Count.** Shows how long you've worked since your last break, at the right of the prompt footer beside its other labels: `🍅 12/25m`. Once a break is due, a status line under the prompt says so too; Claude Code draws a plugin's status line in yellow with a ⚠, as `⚠ pomodoro: 🍅 27m, time for a break`. A phone following the session shows that line only.
+- **Count.** Shows the minutes since your last break, at the right of the prompt footer beside its other labels: `🍅 12/25m`. Once a break is due, a status line under the prompt says so too; Claude Code draws a plugin's status line in yellow with a ⚠, as `⚠ pomodoro: 🍅 27m, time for a break`. A phone following the session shows that line only.
 - **Alert.** After a 25-minute pomodoro it plays a chime and shows a toast and a desktop notification. The alert repeats every 5 minutes until you take a break, but not once you've been away from the keyboard for 2 minutes (the break may already be under way).
 
 It runs on a clock, a tick every minute, so the alert comes on time even while you're reading code and not typing to Claude.
@@ -73,7 +73,7 @@ Under `/config`, or `pluginConfigs` in `settings.json`:
 
 | Setting        | Default | What it does                                                                                |
 | -------------- | ------- | ------------------------------------------------------------------------------------------- |
-| `workMinutes`  | `25`    | Minutes of work before the alert                                                            |
+| `workMinutes`  | `25`    | Minutes without a break before the alert                                                    |
 | `breakMinutes` | `5`     | Idle minutes that count as a break, and how often the alert repeats                         |
 | `moveSeconds`  | `1`     | Seconds the mouse has to keep moving to count (macOS); `0` counts every movement            |
 | `sound`        | `true`  | Whether each alert plays a chime (macOS)                                                    |

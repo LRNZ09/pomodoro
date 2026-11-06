@@ -8,7 +8,7 @@
 		"workMinutes": {
 			"type": "number",
 			"title": "Pomodoro (minutes)",
-			"description": "Minutes of work before the break alert.",
+			"description": "Minutes without a break before the alert.",
 			"default": 25,
 			"min": 1
 		},

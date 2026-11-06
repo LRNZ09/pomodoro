@@ -1,6 +1,6 @@
 # Pomodoro for Pi
 
-After every 25 minutes of work, you get a reminder to take a break, and your agent gets a note so it can sum up the session if that helps.
+After 25 minutes without a break, you get a reminder to take one, and your agent gets a note so it can sum up the session if that helps.
 
 ```
 pi install npm:@beautifoo/pi-pomodoro

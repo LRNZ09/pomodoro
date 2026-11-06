@@ -1,6 +1,6 @@
 {
 	"name": "pomodoro",
-	"description": "Pomodoro for Claude Code and Pi: a break reminder every 25 minutes of work, and a summary from the agent when it helps.",
+	"description": "Pomodoro for Claude Code and Pi: a break reminder after 25 minutes without one, and a summary from the agent when it helps.",
 	"owner": { "name": "Lorenzo Pieri" },
 	"plugins": [
 		{
